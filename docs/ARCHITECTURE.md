@@ -172,7 +172,7 @@ Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
 
 ## 8. Risks and limitations
 
-- **Storage:** 467 GB free vs. about 530 GB of sources. Each slice is 139776 x 102144 px at 220 nm/px (about 14.3 Gpx, about 31 x 22 mm), i.e. about 43 GB raw RGB per slice and about 6 TB for 140. Native-resolution precomputation is infeasible; it must be served on demand (post-MVP) and may be slow from the external drive. Estimates for a precomputed floor: 4x downsample (0.88 um/px) is about 2.7 GB raw per slice (about 375 GB raw, roughly tens of GB with JPEG-type compression); 2x (0.44 um/px) is about 10.7 GB raw per slice (about 1.5 TB raw, possibly around 100 GB compressed, to be measured). The floor is chosen after measuring real compression.
+- **Storage:** 467 GB free vs. 402 GB of sources. Each slice is 139776 x 102144 px at 220 nm/px (about 14.3 Gpx, about 31 x 22 mm), i.e. about 43 GB raw RGB per slice and about 6 TB for 140. Native-resolution precomputation is infeasible; it must be served on demand (post-MVP) and may be slow from the external drive. Estimates for a precomputed floor: 4x downsample (0.88 um/px) is about 2.7 GB raw per slice (about 375 GB raw, roughly tens of GB with JPEG-type compression); 2x (0.44 um/px) is about 10.7 GB raw per slice (about 1.5 TB raw, possibly around 100 GB compressed, to be measured). The floor is chosen after measuring real compression.
 - **Drift:** errors accumulate across 140 chained pairs; mitigated by drift correction and QC; unsolved in general.
 - **Non-rigid distortion:** can deform real anatomy; kept behind a flag.
 - **Damaged sections** (tears, folds) will need manual overrides.

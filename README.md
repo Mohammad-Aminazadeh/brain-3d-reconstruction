@@ -4,7 +4,7 @@ Reconstruct a 3D volume of brain tissue from 140 serial, ultra-high-resolution 2
 
 ## Overview
 
-Each slice is a scanned tissue section of about 3.8 GB (about 530 GB for all 140). The slices are physically shifted, rotated and slightly deformed relative to each other. The software:
+Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The slices are physically shifted, rotated and slightly deformed relative to each other. The software:
 
 1. reads the NDPI slices without loading them fully into memory,
 2. registers (aligns) consecutive slices so that anatomy lines up,
