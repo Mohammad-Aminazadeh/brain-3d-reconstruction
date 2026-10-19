@@ -36,7 +36,7 @@ Conventions that apply to every task (not repeated below):
 | M2-07 | Neuroglancer state and local viewer | serve | Medium | Done (unverified in browser) | M2-06 |
 | M2-08 | Interim CLI (`volume`, `serve`) | pipeline | Low | Done | M2-03, M2-05, M2-07 |
 | M2-09 | Real build, slices 1 to 10 | integration | Low | Done | M2-08 |
-| M2-10 | Visual check in Neuroglancer | integration | Low | Passed (xy); 4-panel retest pending | M2-09 |
+| M2-10 | Visual check in Neuroglancer | integration | Low | Done | M2-09 |
 | M2-11 | Close M2 test gaps (config, CLI) | tests | Low | To do | M2-08 |
 | M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | To do | M2-04 |
 | M3-02 | Synthetic tissue and rigid-transform generator | tests | Medium | To do | M0-05 |
@@ -275,7 +275,7 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
 - **Tests:** run log.
 - **Result (2026-10-19):** exit 0, 10 slices in 11.5 min (about 1.1 min/slice), 960 files, 19.5 GB on disk (no block waste). Server smoke test: data and viewer pages answer 200; shard range reads answer 206.
 
-#### M2-10 Visual check in Neuroglancer · Low · Passed (xy); 4-panel retest pending
+#### M2-10 Visual check in Neuroglancer · Low · Done
 - **Objective:** Confirm R6: the volume opens and streams in the browser (MVP gate for M2).
 - **Inputs:** `brainrec serve` link. **Outputs:** owner's confirmation, or a bug report with a screenshot.
 - **Depends on:** M2-09.
@@ -285,7 +285,7 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
   - Evidence: three Chrome crash dumps of the **GPU process** (Chrome 154, Apple GPU, ANGLE Metal backend) at 20:29, 20:30 and 20:31; Chrome disables WebGL after repeated GPU-process crashes until it is restarted. No server errors (8,422 requests, 7,847 at full resolution). System memory normal.
   - My Passport serves about 27 random 430 KB chunks/s (median 0.5 s at 16 in parallel), so full-resolution areas fill in slowly.
   - Change: viewer now opens in a single `xy` panel with `gpuMemoryLimit` 512 MB, `systemMemoryLimit` 1 GB and 8 concurrent downloads (`brainrec serve --layout 4panel --gpu-memory-mb N` to override).
-- **Second attempt (2026-10-19):** after a full Chrome restart, with hardware acceleration switched on, everything worked in the `xy` layout. The owner reports that Chrome's hardware acceleration had been **off** during the first attempt, so WebGL was probably running in software; that is the most likely cause of the slowness and the GPU-process crashes. 4-panel retest (same 512 MB limit) pending.
+- **Second attempt (2026-10-19):** after a full Chrome restart, with hardware acceleration switched on, everything worked in the `xy` layout. The owner reports that Chrome's hardware acceleration had been **off** during the first attempt, so WebGL was probably running in software; that is the most likely cause of the slowness and the GPU-process crashes. 4-panel retest (same 512 MB limit): works. Owner noted that 3D zoom centres on the current position and only the area shown by the 2D panels becomes sharp in 3D; both are Neuroglancer behaviour (documented under README, Viewer controls).
 
 ### Component: tests
 

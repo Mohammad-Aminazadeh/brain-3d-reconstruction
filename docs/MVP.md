@@ -47,7 +47,7 @@ brainrec --config config/project.yaml serve   -> local Neuroglancer link, open i
 | R3 | OpenSlide reads these NDPI files | M1 | **Resolved:** yes, all 140 |
 | R4 | Volume size and storage | M1, M2 | **Resolved:** about 2 GB/slice lossless, about 280 GB for 140 slices; exFAT needs sharding |
 | R5 | Rigid registration aligns real adjacent slices | M3 | Open |
-| R6 | Neuroglancer opens and streams the OME-Zarr | M2 | Open: awaiting visual check |
+| R6 | Neuroglancer opens and streams the OME-Zarr | M2 | **Resolved:** works in Chrome with hardware acceleration on |
 | R7 | Slice orientation (flips) | M3 | Open |
 | R8 | Z spacing unknown | n/a | Open: placeholder 5 µm in config |
 
@@ -72,7 +72,7 @@ The MVP is accepted when all hold, each checked by a command or test that was ac
 |---|---|---|---|
 | M0 | Environment and project setup | `pytest`, `ruff`, `mypy` run clean | Done (CI still to do) |
 | M1 | Data characterisation | Owner chose the base level (4x) | Done |
-| M2 | Unregistered vertical slice (10 slices, no registration) | Volume opens in Neuroglancer (R6) | Built; **awaiting visual check** |
+| M2 | Unregistered vertical slice (10 slices, no registration) | Volume opens in Neuroglancer (R6) | Done |
 | M3 | Registration | Synthetic tests pass (AC4); real overlays reviewed (R5, R7) | To do |
 | M4 | Quality control | Owner can see which pairs are doubtful (AC5) | To do |
 | M5 | Integration: `brainrec run` end to end | AC1, AC2, AC3, AC6 | To do |

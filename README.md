@@ -33,7 +33,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 | NDPI facts | Slice 1: 139776 x 102144 px at 220 nm/px (reported by owner); pyramid levels not yet inspected |
 | Environment set up (M0) | Done: .venv, dependencies, package skeleton, 1 smoke test |
 | M1 data characterisation | Done (see docs/REQUIREMENTS.md section 7) |
-| M2 unregistered volume | Built for slices 1 to 10 (19.5 GB, 11.5 min); awaiting visual check in the browser |
+| M2 unregistered volume | Done: slices 1 to 10 (19.5 GB, 11.5 min), checked in Neuroglancer |
 | M3 registration | Not started |
 
 ## Usage (current)
@@ -45,6 +45,15 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 .venv/bin/brainrec --config config/project.yaml serve        # prints a viewer link; open it in Chrome
 .venv/bin/pytest
 ```
+
+### Viewer controls (Neuroglancer)
+
+- **Right-click** in any panel: move the current position there. All panels, including 3D, zoom around this position.
+- **Ctrl + wheel**: zoom. **Wheel**: next/previous slice (z). **Shift + wheel**: 10 slices.
+- 2D panels: left-drag pans. 3D panel: left-drag rotates, Shift + left-drag pans.
+- The 3D panel shows the three 2D planes in space. They are sharp only where the 2D panels have loaded full-resolution data (their field of view around the current position). This is how Neuroglancer works, not a fault.
+- `brainrec serve --layout 4panel` opens all four panels (heavier); the default is a single XY panel. Chrome needs hardware acceleration on (`chrome://gpu` shows "WebGL: Hardware accelerated").
+- The data is read from a USB hard disk (about 27 chunks/s), so full-resolution areas take a few seconds to fill in.
 
 ## Documentation
 
