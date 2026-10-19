@@ -1,6 +1,6 @@
 # MVP backlog (Work Breakdown Structure)
 
-Scope and acceptance criteria (AC1 to AC8): [docs/MVP.md](../docs/MVP.md). Architecture and interfaces: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+Scope and acceptance criteria (AC1 to AC9): [docs/MVP.md](../docs/MVP.md). Architecture and interfaces: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 Hierarchy: **Milestone → Component → Task → Subtask.** One task = one focused coding session with a verifiable result. Tasks are done one at a time (CLAUDE.md); "independent" below means the order among them is free.
 
@@ -33,22 +33,24 @@ Conventions that apply to every task (not repeated below):
 | M2-04 | `WorkDir` and `Manifest` | store | Low | Done | M0-03 |
 | M2-05 | Unregistered volume builder | volume | High | Done | M2-01, M2-02, M2-04, M0-05 |
 | M2-06 | Static data server | serve | Low | Done | M0-03 |
-| M2-07 | Neuroglancer state and local viewer | serve | Medium | Done (unverified in browser) | M2-06 |
+| M2-07 | Neuroglancer state and local viewer | serve | Medium | Done | M2-06 |
 | M2-08 | Interim CLI (`volume`, `serve`) | pipeline | Low | Done | M2-03, M2-05, M2-07 |
 | M2-09 | Real build, slices 1 to 10 | integration | Low | Done | M2-08 |
 | M2-10 | Visual check in Neuroglancer | integration | Low | Done | M2-09 |
 | M2-11 | Close M2 test gaps (config, CLI) | tests | Low | To do | M2-08 |
-| M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | To do | M2-04 |
-| M3-02 | Synthetic tissue and rigid-transform generator | tests | Medium | To do | M0-05 |
+| M3-06 | **Real-data spike: orientation, tissue masks, feature matching (first M3 task)** | integration | Medium | To do | none |
+| M3-00 | Registration contracts (C1 to C12) | docs | Low | To do | M3-06 |
+| M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | To do | M2-04, M3-00 |
+| M3-02 | Synthetic tissue and rigid-transform generator | tests | Medium | To do | M0-05, M3-00 |
 | M3-03 | Registration image | preprocess | Medium | To do | M3-01 |
-| M3-04 | Tissue mask | preprocess | Low | To do | M3-03 |
-| M3-05 | `Rigid2D` transform model | registration | Medium | To do | M0-03 |
-| M3-06 | Orientation spike (flips) | integration | Low | To do | M3-03 |
-| M3-07 | Rigid pairwise registration | registration | High | To do | M3-02, M3-04, M3-05 |
-| M3-08 | Chain and register a slice range | registration | Low | To do | M3-07, M3-01 |
-| M3-09 | Volume builder with transforms | volume | High | To do | M3-05, M2-05 |
-| M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | To do | M3-08, M3-09 |
-| M3-11 | Real registration, slices 1 to 10 | integration | Medium | To do | M3-10, M2-10, M3-06 |
+| M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | To do | M3-03 |
+| M3-05 | `Rigid2D` transform model | registration | Medium | To do | M3-00 |
+| M3-07 | Feature-based pairwise registration (tissue only) | registration | High | To do | M3-02, M3-05 (M3-04 soft) |
+| M3-08 | Chain and register a slice range | registration | Low | To do | M3-07, M3-01, M3-03, M3-04 |
+| M3-09 | Volume builder with transforms, tissue only | volume | High | To do | M3-05, M2-05 (M3-04 soft) |
+| M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | To do | M3-08, M3-09, M2-11 |
+| M3-12 | Transparent background in the viewer | serve | Low | To do | M3-09 |
+| M3-11 | Real registration, slices 1 to 10 | integration | Medium | To do | M3-10, M3-12, M2-10, M3-06 |
 | M4-01 | Pair score | qc | Medium | To do | M3-05, M3-02 |
 | M4-02 | Overlay image | qc | Low | To do | M3-05 |
 | M4-03 | QC report and flags | qc | Low | To do | M4-01, M4-02, M3-01 |
@@ -71,32 +73,39 @@ Conventions that apply to every task (not repeated below):
 
 **Independent (order is free; each can be picked up whenever its listed dependency is done):**
 - Any time: M0-06 (CI), M1-02 (header survey), M2-11 (test gaps), M5-03 (disk preflight), M5-04 (source fingerprint).
-- After M3-01: M3-02 (synthetic generator), M3-03 (registration image) and M3-05 (transform model) do not depend on each other.
+- After M3-00: M3-01 (layout), M3-02 (synthetic generator) and M3-05 (transform model) do not depend on each other; M3-03 → M3-04 can follow M3-01 independently of M3-07.
 - After M3-05: M3-09 (volume with transforms), M4-01 and M4-02 (QC score and overlay) can be built and tested on synthetic data while M3-07 is in progress.
-- M3-06 (orientation spike) needs only M3-03.
+- M3-12 (transparent background) needs only M3-09.
 
 **Sequential (critical path):**
-M3-05 → M3-07 → M3-08 → M3-10 → M3-11 → M4-05 → M5-01 → M5-02 → M5-06 → M6-01/02/03 → M6-04.
-M2-10 (owner's visual check) must pass before M3-11, because M3-11 relies on the viewer to judge registration.
+M3-06 (spike) → M3-00 (contracts) → M3-05 → M3-07 → M3-08 → M3-10 → M3-11 → M4-05 → M5-01 → M5-02 → M5-06 → M6-01/02/03 → M6-04.
+M2-10 (owner's visual check, done) had to pass before M3-11, because M3-11 relies on the viewer to judge registration. M2-11 must precede M3-10, because it creates `tests/unit/test_cli.py`, which M3-10 extends. Details and session estimates: `tasks/IMPLEMENTATION_PLAN.md`.
 
 ```mermaid
 flowchart TD
-    M2-05 --> M3-09
+    M3-06 --> M3-00
+    M3-00 --> M3-01 & M3-02 & M3-05
     M2-04 --> M3-01
     M3-01 --> M3-03 --> M3-04
-    M3-03 --> M3-06
     M0-05 --> M3-02
     M3-02 --> M3-07
-    M3-04 --> M3-07
     M3-05 --> M3-07
+    M3-04 -.-> M3-07
+    M3-07 --> M3-08
+    M3-03 --> M3-08
+    M3-04 --> M3-08
+    M2-05 --> M3-09
     M3-05 --> M3-09
-    M3-05 --> M4-01
-    M3-05 --> M4-02
-    M3-07 --> M3-08 --> M3-10
+    M3-04 -.-> M3-09
+    M3-08 --> M3-10
     M3-09 --> M3-10
-    M2-10 --> M3-11
-    M3-06 --> M3-11
+    M2-11 --> M3-10
+    M3-09 --> M3-12
     M3-10 --> M3-11
+    M3-12 --> M3-11
+    M3-05 --> M4-01
+    M3-02 --> M4-01
+    M3-05 --> M4-02
     M4-01 --> M4-03
     M4-02 --> M4-03 --> M4-04
     M3-11 --> M4-05
@@ -250,7 +259,7 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
 - **Acceptance:** cross-origin GET and range GET work.
 - **Tests:** `tests/unit/test_serve.py` (CORS, range).
 
-#### M2-07 Neuroglancer state and local viewer · Medium · Done (unverified in browser)
+#### M2-07 Neuroglancer state and local viewer · Medium · Done
 - **Objective:** Show the RGB volume in a locally served Neuroglancer.
 - **Inputs:** volume URL, OME metadata. **Outputs:** viewer state (channel axis `c` mapped to `c^`, scales in metres); local viewer URL; public fallback link.
 - **Depends on:** M2-06. **Files:** `src/brainrec/serve/app.py`; `docs/decisions/0002-local-viewer.md`.
@@ -301,12 +310,34 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
 
 Goal: rigid slice-to-slice alignment, proven on synthetic data (AC4), then applied to slices 1 to 10. Transforms are expressed in **micrometres in each slice's level-0 frame**, so they apply unchanged at every pyramid level.
 
+Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-feature-based-registration.md`):
+- **Tissue only (F12):** the tissue mask defines what is processed. Registration and QC work inside the masks; the volume stores only tissue and is limited to the tissue extent.
+- **Feature-based (F13):** boundary-based initial alignment from the masks, SIFT features inside the tissue matched between neighbours, RANSAC fit, boundary fallback.
+
+### Component: integration (first)
+
+#### M3-06 Real-data spike: orientation, tissue masks, feature matching · Medium · To do
+- **Objective:** Before writing registration code, check on real slices: are some slices mirrored (R7)? Do simple masks capture the tissue without glass or debris (R9)? Do neighbouring sections give enough reliable SIFT/ORB matches inside the tissue, and is a rigid fit enough (R10, R5)?
+- **Inputs:** 32x level of slices 1 to 10, read directly with `SlideReader`. **Outputs:** contact sheet with mask outlines; for 4 pairs: match and inlier counts (SIFT vs ORB), residual, rigid vs similarity fit (scale), boundary-only result, mirrored-candidate result, overlay and match picture; findings in `docs/REQUIREMENTS.md` section 7. Details in `tasks/IMPLEMENTATION_PLAN.md` section 6.
+- **Depends on:** none (first task of M3). **Files:** `scripts/spike_registration.py`, `docs/REQUIREMENTS.md`.
+- **Acceptance:** owner has reviewed contact sheet, overlays and match pictures; decisions recorded: mirror needed, rigid or similarity, detector, mask method adequate, 32x adequate, initial inlier and residual thresholds.
+- **Tests:** manual review (throwaway script, writes only to the work dir `spike/`).
+
+### Component: docs
+
+#### M3-00 Registration contracts · Low · To do
+- **Objective:** Fix the cross-cutting contracts C1 to C12 (`tasks/IMPLEMENTATION_PLAN.md` section 5) with the spike's facts, before any M3 library code.
+- **Inputs:** spike findings (M3-06). **Outputs:** `docs/ARCHITECTURE.md` section 5 (proposed M3/M4 entries become contracts: coordinates, transform direction and family, file formats, manifest schema, stage shape, config fields, tissue-only semantics, failure rules); spike decisions recorded in `docs/decisions/0003-tissue-only-feature-based-registration.md`.
+- **Depends on:** M3-06. **Files:** `docs/ARCHITECTURE.md`, `docs/decisions/0003-tissue-only-feature-based-registration.md`, `tasks/IMPLEMENTATION_PLAN.md`.
+- **Acceptance:** owner approves; every M3 and M4 task card refers only to defined contracts.
+- **Tests:** none (documentation); review.
+
 ### Component: store
 
 #### M3-01 Work-dir layout for reg, mask, transforms, qc · Low · To do
 - **Objective:** Define every MVP output path in one place before the stages that write them.
 - **Outputs:** `WorkDir.reg_image(id)`, `.reg_meta(id)`, `.mask(id)`, `.pair_transform(id)`, `.chained_transform(id)`, `.qc_report`, `.qc_overlay(id)`.
-- **Depends on:** M2-04. **Files:** `src/brainrec/store/layout.py`, `docs/ARCHITECTURE.md` (layout section).
+- **Depends on:** M2-04, M3-00. **Files:** `src/brainrec/store/layout.py`, `docs/ARCHITECTURE.md` (layout section).
 - **Acceptance:** all paths under `root`; names stable and documented.
 - **Tests:** `tests/unit/test_layout.py` (paths, no collisions between ids).
 
@@ -314,9 +345,9 @@ Goal: rigid slice-to-slice alignment, proven on synthetic data (AC4), then appli
 
 #### M3-02 Synthetic tissue and rigid-transform generator · Medium · To do
 - **Objective:** Ground truth for registration and QC tests.
-- **Outputs:** `tests/synthetic/tissue.py`: `make_tissue(shape, seed)` (irregular blob with texture and dark "cells"), `apply_rigid(img, angle_deg, tx, ty)` returning the moved image and true parameters; a `FakeSlide` variant built from a given image.
-- **Depends on:** M0-05. **Files:** `tests/synthetic/tissue.py`, `tests/synthetic/fake_slide.py` (additive).
-- **Acceptance:** deterministic for a seed; applying a transform and its inverse returns the original within interpolation error.
+- **Outputs:** `tests/synthetic/tissue.py`: `make_tissue(shape, seed)` returning an image and its ground-truth mask: an irregular tissue blob with internal structures that give detectable features (vessel-like curves, blobs of varying size, texture, dark "cells"), on a glass-like background with **debris outside the tissue** (small specks, a label-like rectangle) to test that only tissue is used; `apply_rigid(img, mask, angle_deg, tx, ty)` returning the moved image, moved mask and true parameters; `perturb(img, seed)` for section-to-section differences (noise, slight intensity change, a few structures added or removed); a `FakeSlide` variant built from a given image.
+- **Depends on:** M0-05, M3-00. **Files:** `tests/synthetic/tissue.py`, `tests/synthetic/fake_slide.py` (additive).
+- **Acceptance:** deterministic for a seed; applying a transform and its inverse returns the original within interpolation error; SIFT finds at least 100 keypoints inside the tissue of a 1000 x 800 image.
 - **Tests:** `tests/unit/test_synthetic.py`.
 
 ### Component: preprocess
@@ -329,64 +360,60 @@ Goal: rigid slice-to-slice alignment, proven on synthetic data (AC4), then appli
 - **Acceptance:** reads one whole coarse level (no level-0 access); output size equals the level size; metadata correct.
 - **Tests:** `tests/unit/test_preprocess.py` with `FakeSlide` (size, inversion, metadata, reads only the requested level).
 
-#### M3-04 Tissue mask · Low · To do
-- **Objective:** Restrict registration and QC to tissue.
-- **Inputs:** registration image. **Outputs:** `mask/{id}.png` (0/255).
-- **Method:** Otsu threshold, morphological close and open, fill holes, drop components below 1% of tissue area.
+#### M3-04 Tissue mask · Medium · To do
+- **Objective:** Define what counts as tissue for every later stage (F12): registration, QC and the volume ignore everything outside the mask.
+- **Inputs:** registration image. **Outputs:** `mask/{id}.png` (uint8 {0, 255}, same shape as the registration image).
+- **Method:** Otsu threshold, morphological close and open, fill holes (tissue with internal holes stays one region), drop components below 1% of tissue area (debris, dust, label remnants).
 - **Depends on:** M3-03. **Files:** `src/brainrec/preprocess/mask.py`.
-- **Acceptance:** Dice at least 0.95 against the synthetic ground-truth blob.
-- **Tests:** `tests/unit/test_mask.py`.
+- **Acceptance:** Dice at least 0.95 against the synthetic ground-truth mask; synthetic debris and the label rectangle are excluded; tissue recall at least 0.99 (cutting tissue is worse than keeping a little glass).
+- **Tests:** `tests/unit/test_mask.py` (Dice, debris removed, holes filled, recall).
 
 ### Component: registration
 
 #### M3-05 `Rigid2D` transform model · Medium · To do
 - **Objective:** The transform type every later stage uses.
 - **Outputs:** `Rigid2D(angle_rad, tx_um, ty_um, cx_um, cy_um)` mapping slice coordinates to reference coordinates; `matrix()`, `inverse()`, `compose()`, `apply(points)`, `to_pixels(downsample, mpp)` (3x3 matrix at a pyramid level), `save()`/`load()` (JSON with schema version).
-- **Depends on:** M0-03. **Files:** `src/brainrec/registration/transform.py`, `docs/ARCHITECTURE.md` (interface).
+- **Depends on:** M3-00 (conventions C1 to C3). **Files:** `src/brainrec/registration/transform.py`, `docs/ARCHITECTURE.md` (interface).
 - **Acceptance:** level-independent: the same transform gives consistent pixel matrices at 4x and 32x.
 - **Tests:** `tests/unit/test_transform.py` (identity, inverse round trip, composition order, JSON round trip, pixel conversion at two levels).
 
-#### M3-07 Rigid pairwise registration · High · To do
-- **Objective:** Estimate the rigid transform aligning slice i+1 to slice i.
-- **Inputs:** two registration images and masks with metadata. **Outputs:** `Rigid2D` plus final metric value.
-- **Depends on:** M3-02, M3-04, M3-05. **Files:** `src/brainrec/registration/pairwise.py`.
+#### M3-07 Feature-based pairwise registration (tissue only) · High · To do
+- **Objective:** Estimate the transform aligning slice k to slice k-1 by detecting features in both images and matching them (F13), using only the tissue (F12).
+- **Inputs:** two registration images with masks and metadata. **Outputs:** `PairResult`: `Rigid2D` (moving → fixed, µm), method used (`features` or `boundary`), number of matches and inliers, residual (µm).
+- **Depends on:** M3-02, M3-05; M3-04 soft (tests use synthetic ground-truth masks; the mask file contract C4 comes from M3-00). **Files:** `src/brainrec/registration/{features,boundary,pairwise}.py`.
 - **Subtasks:**
-  - M3-07a Initialisation: align mask centroids (SimpleITK moments initialiser). Test: pure translation recovered within 2 px.
-  - M3-07b Coarse rotation search: score candidate angles every 10 degrees over 360 at reduced size; keep the best. Test: rotations of 45 and 170 degrees land within 10 degrees.
-  - M3-07c Refinement: SimpleITK `Euler2DTransform`, Mattes mutual information, masks, 3-level pyramid. Test: AC4 (1 px, 0.5 degree) on 5 seeded synthetic pairs.
-  - M3-07d Result conversion: pixels to micrometres in `Rigid2D`; return metric. Test: conversion matches M3-05 conventions.
-  - M3-07e Mirrored candidate, **only if M3-06 finds flipped slices**. Test: a mirrored synthetic pair is recovered.
-- **Acceptance:** AC4 passes; an unrelated image pair yields a clearly worse metric than a true pair.
-- **Tests:** `tests/unit/test_pairwise.py`.
+  - M3-07a **Boundary-based initial alignment** from the masks: centroid and principal axes of the tissue shape; both 180° candidates kept. Test: pure translation within 2 px; rotations of 45° and 170° within 10°.
+  - M3-07b **Feature detection inside the tissue:** contrast normalisation (CLAHE), SIFT keypoints and descriptors with the mask as detection region. Test: keypoints only inside the mask; synthetic debris yields no keypoints.
+  - M3-07c **Matching and robust fit:** nearest-neighbour matching with a ratio test (and optional consistency with the initial alignment), RANSAC fit of a rigid transform; inlier count and residual reported. Test: **AC4** (1 px, 0.5°) on 5 seeded synthetic pairs with `perturb`; 30% injected false matches do not change the result.
+  - M3-07d **Boundary fallback** when inliers are below a threshold: iterative closest point on the two tissue outlines, starting from M3-07a. Test: a pair with texture removed (shape only) aligns within 3 px.
+  - M3-07e **Result conversion** to micrometres following the M3-00 conventions (direction moving → fixed). Test: matches M3-05 conventions at 32x and 4x.
+  - M3-07f Mirrored candidate (match against the mirrored moving image), **only if M3-06 finds flipped slices**. Test: a mirrored synthetic pair is recovered.
+  - M3-07g Intensity refinement inside the masks (SimpleITK), **only if** M3-07c misses AC4 or the spike shows feature-based residuals are too large. Test: AC4.
+- **Acceptance:** AC4 passes; an unrelated image pair yields few inliers and is reported as failed (no silent wrong transform); results are identical with and without background debris.
+- **Tests:** `tests/unit/test_boundary.py`, `tests/unit/test_features.py`, `tests/unit/test_pairwise.py`.
 
 #### M3-08 Chain and register a slice range · Low · To do
 - **Objective:** Pairwise transforms for consecutive slices, composed to slice 1's frame.
-- **Inputs:** catalog range, work dir. **Outputs:** `transforms/pair_{id}.json`, `transforms/chained_{id}.json` (slice 1 = identity).
-- **Depends on:** M3-07, M3-01. **Files:** `src/brainrec/registration/chain.py`.
+- **Inputs:** catalog range, work dir. **Outputs:** `transforms/pair_{id}.json` (transform + match quality: method, matches, inliers, residual), `transforms/chained_{id}.json` (slice 1 = identity).
+- **Depends on:** M3-07, M3-01, M3-03, M3-04. **Files:** `src/brainrec/registration/chain.py`.
 - **Acceptance:** chained = composition of pairs in the documented order; per-pair resume via manifest.
 - **Tests:** `tests/unit/test_chain.py` (known synthetic chain of 4 transforms; resume skips done pairs).
 
-#### M3-06 Orientation spike (flips) · Low · To do
-- **Objective:** Resolve risk R7 before real registration: are some slices mirrored?
-- **Inputs:** registration images of slices 1 to 10. **Outputs:** a contact sheet (`qc/contact_sheet.png`) and a short finding in `docs/REQUIREMENTS.md` section 7.
-- **Depends on:** M3-03. **Files:** `scripts/contact_sheet.py`, `docs/REQUIREMENTS.md`.
-- **Acceptance:** owner and assistant agree whether M3-07e is needed.
-- **Tests:** manual review.
-
 ### Component: volume
 
-#### M3-09 Volume builder with transforms · High · To do
-- **Objective:** Resample slices through their chained transforms into the pyramid.
-- **Inputs:** `Catalog`, chained transforms, `VolumeSpec`. **Outputs:** `volume.zarr` as in M2, registered.
-- **Interface change:** `build_volume(..., transforms: dict[int, Rigid2D] | None = None)`; `None` keeps M2 behaviour (centred). Consequence: the manifest signature includes a hash of the transforms, so changed transforms trigger the overwrite guard.
-- **Depends on:** M3-05, M2-05. **Files:** `src/brainrec/volume/builder.py`, `src/brainrec/volume/warp.py` (new), `docs/ARCHITECTURE.md`.
+#### M3-09 Volume builder with transforms, tissue only · High · To do
+- **Objective:** Resample slices through their chained transforms into the pyramid, keeping only tissue (F12).
+- **Inputs:** `Catalog`, chained transforms, tissue masks, `VolumeSpec`. **Outputs:** `volume.zarr` as in M2, registered, tissue only.
+- **Interface change:** `build_volume(..., transforms: dict[int, Rigid2D] | None = None, masks: dict[int, Path] | None = None)`; `None` keeps M2 behaviour (centred, whole scan). Consequence: the manifest signature includes hashes of the transforms and masks, so changes trigger the overwrite guard.
+- **Depends on:** M3-05, M2-05 (mask files from M3-04 for real runs; tests use synthetic masks). **Files:** `src/brainrec/volume/builder.py`, `src/brainrec/volume/warp.py` (new), `docs/ARCHITECTURE.md`.
 - **Subtasks:**
-  - M3-09a Canvas from the bounding box of all transformed slice corners (µm), aligned offsets. Test: known transforms give the expected canvas.
+  - M3-09a Canvas from the bounding box of all **transformed tissue masks** (µm) plus the safety margin, not of the scanned area; aligned offsets. Test: known transforms and masks give the expected canvas; glass-only areas outside it.
   - M3-09b Output tiles equal to shards (4096 x 4096): for each tile, the inverse-mapped source bounding box, clipped to the slice. Test: rotated tile maps to the expected source box; memory bounded (box at most about 5800 px square).
   - M3-09c Warp one tile: read the source box, `cv2.warpAffine` (bilinear, white border), write the tile. Test: integer translation reproduces pixels exactly; 90 degree rotation moves the marker to the expected place.
   - M3-09d Apply per level using the same `Rigid2D`. Test: the marker is at the same physical position at all 5 levels.
-  - M3-09e Signature and resume with transforms. Test: unchanged transforms resume; changed ones are refused without overwrite.
-- **Acceptance:** with synthetic slices moved by known transforms, the inverse transforms put all markers on one (x, y) across z within 1 px at the base level.
+  - M3-09e Signature and resume with transforms and masks. Test: unchanged inputs resume; changed ones are refused without overwrite.
+  - M3-09f **Tissue masking:** warp each mask with the slice's transform to the tile, enlarge by the safety margin (about 50 µm, proposed), set voxels outside to the fill value (255, 255, 255) before writing, so all-background chunks are not stored. Tissue voxels that are exactly (255, 255, 255) are stored as (254, 254, 254), so pure white means background unambiguously (C11; needed for the transparent display, M3-12). Test: no non-background voxel outside the enlarged mask; every tissue voxel kept and never pure white; background-only tiles write no chunk.
+- **Acceptance:** with synthetic slices moved by known transforms, the inverse transforms put all markers on one (x, y) across z within 1 px at the base level; AC9 holds on synthetic data (tissue only, nothing cut off).
 - **Tests:** `tests/unit/test_volume_warp.py`; existing `tests/unit/test_volume.py` still passes unchanged.
 
 ### Component: pipeline
@@ -394,17 +421,26 @@ Goal: rigid slice-to-slice alignment, proven on synthetic data (AC4), then appli
 #### M3-10 Interim CLI: `preprocess`, `register` · Low · To do
 - **Objective:** Run M3 stages on real data before the M5 runner exists.
 - **Outputs:** `brainrec preprocess --slices A-B`, `brainrec register --slices A-B`; `brainrec volume` uses chained transforms when they exist (`--unregistered` to force M2 mode).
-- **Depends on:** M3-08, M3-09. **Files:** `src/brainrec/pipeline/cli.py`, README usage.
+- **Depends on:** M3-08, M3-09, M2-11 (creates `tests/unit/test_cli.py`). **Files:** `src/brainrec/pipeline/cli.py`, README usage.
 - **Acceptance:** each command runs on a synthetic temp work dir.
 - **Tests:** `tests/unit/test_cli.py` (extended).
+
+### Component: serve
+
+#### M3-12 Transparent background in the viewer · Low · To do
+- **Objective:** Show everything outside the tissue as transparent, so empty space contrasts with the tissue (owner decision, 2026-10-19).
+- **Inputs:** a volume in which background voxels are exactly (255, 255, 255) and tissue voxels never are (C11, M3-09f). **Outputs:** Neuroglancer shader: transparent where all three channels are 255, RGB colour elsewhere; dark panel background for contrast.
+- **Depends on:** M3-09. **Files:** `src/brainrec/serve/app.py`, `tests/unit/test_serve.py`, README (viewer controls).
+- **Acceptance:** in the registered volume, glass areas are transparent in the 2D and 3D panels; tissue colours unchanged.
+- **Tests:** state contains the transparent branch; Neuroglancer's own parser accepts the state; owner check in M3-11.
 
 ### Component: integration
 
 #### M3-11 Real registration, slices 1 to 10 · Medium · To do
 - **Objective:** Resolve risk R5 on real data.
 - **Inputs:** My Passport slices 1 to 10. **Outputs:** transforms, registered volume, metric per pair, run times.
-- **Depends on:** M3-10, M2-10, M3-06.
-- **Acceptance:** in Neuroglancer, scrolling through z shows tissue staying in place (owner's judgement); any pair that fails is listed with its metric.
+- **Depends on:** M3-10, M3-12, M2-10, M3-06.
+- **Acceptance:** in Neuroglancer, scrolling through z shows tissue staying in place (owner's judgement); any pair that fails is listed with its match quality; the volume shows only tissue (no debris, no tissue cut off at the edges; a rim of up to about 50 µm is accepted), with the background transparent; volume size compared with the unregistered M2 volume.
 - **Tests:** run log; owner review.
 
 ---
@@ -414,15 +450,15 @@ Goal: rigid slice-to-slice alignment, proven on synthetic data (AC4), then appli
 ### Component: qc
 
 #### M4-01 Pair score · Medium · To do
-- **Objective:** A number per pair that separates good from bad alignment.
-- **Inputs:** two registration images, masks, `Rigid2D`. **Outputs:** `PairScore(ncc, dice)`: normalised cross-correlation inside the mask overlap, and Dice of the warped masks.
+- **Objective:** Numbers per pair that separate good from bad alignment, computed inside the tissue only (F12).
+- **Inputs:** two registration images, masks, `PairResult`. **Outputs:** `PairScore(n_inliers, rms_um, ncc, dice)`: feature inliers and residual from registration, normalised cross-correlation inside the mask overlap, and Dice of the warped masks.
 - **Depends on:** M3-05, M3-02. **Files:** `src/brainrec/qc/metrics.py`.
 - **Acceptance:** identical images score 1.0; a 10-pixel misalignment scores clearly lower; unrelated images score lowest.
 - **Tests:** `tests/unit/test_qc_metrics.py`.
 
 #### M4-02 Overlay image · Low · To do
 - **Objective:** Visual check per pair.
-- **Outputs:** `qc/overlay_{id}.png`: fixed slice in green, warped moving slice in magenta (aligned tissue looks gray/white).
+- **Outputs:** `qc/overlay_{id}.png`: fixed slice in green, warped moving slice in magenta (aligned tissue looks gray/white), both tissue outlines drawn, inlier feature positions marked.
 - **Depends on:** M3-05. **Files:** `src/brainrec/qc/overlay.py`.
 - **Acceptance:** correct size; channels assigned as documented.
 - **Tests:** `tests/unit/test_qc_overlay.py`.
@@ -520,7 +556,7 @@ Goal: rigid slice-to-slice alignment, proven on synthetic data (AC4), then appli
 
 #### M6-02 Acceptance report · Low · To do
 - **Objective:** One page of evidence per acceptance criterion.
-- **Outputs:** `docs/MVP_REPORT.md` (AC1 to AC8: command, result, date, open issues).
+- **Outputs:** `docs/MVP_REPORT.md` (AC1 to AC9: command, result, date, open issues).
 - **Acceptance:** owner can verify each criterion from the report.
 
 #### M6-03 Scale-up plan (planning only) · Low · To do

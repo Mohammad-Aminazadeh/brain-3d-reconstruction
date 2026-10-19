@@ -7,15 +7,17 @@ Reconstruct a 3D volume of brain tissue from 140 serial, ultra-high-resolution 2
 Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The slices are physically shifted, rotated and slightly deformed relative to each other. The software:
 
 1. reads the NDPI slices without loading them fully into memory,
-2. registers (aligns) consecutive slices so that anatomy lines up,
-3. resamples them into a chunked, multi-resolution 3D volume (OME-Zarr),
-4. serves the volume to a browser-based viewer with zoom and level-of-detail streaming.
+2. finds the tissue in each slice and ignores the empty glass around it,
+3. registers (aligns) consecutive slices by detecting and matching features of the tissue, so that anatomy lines up,
+4. resamples them into a chunked, multi-resolution 3D volume (OME-Zarr) that contains only the tissue,
+5. serves the volume to a browser-based viewer with zoom and level-of-detail streaming.
 
 ## Main functionality (planned)
 
 - Read NDPI slices lazily, in order of the `N_H` number in the filename.
-- Automatic slice-to-slice registration (rigid first, non-rigid later), with drift correction.
-- Registration quality control: metrics, overlays, flagging and manual overrides.
+- Tissue detection per slice: the empty glass around the tissue is ignored everywhere; the volume contains only tissue.
+- Automatic, feature-based slice-to-slice registration: tissue-boundary alignment, then features inside the tissue matched between neighbouring slices with a robust fit (rigid first; non-rigid and drift correction later).
+- Registration quality control inside the tissue: metrics, overlays with tissue outlines, flagging (manual overrides later).
 - Multi-resolution 3D volume with a precomputed pyramid down to about 1 µm/pixel (to be confirmed).
 - Browser viewer: 3D and orthogonal slice views, zoom in and out.
 - Native-resolution detail served on demand from the original slices (post-MVP).
@@ -30,11 +32,11 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 | Requirements | Drafted and approved (see [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)) |
 | Architecture | Approved (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)) |
 | Development rules | See [CLAUDE.md](CLAUDE.md) |
-| NDPI facts | Slice 1: 139776 x 102144 px at 220 nm/px (reported by owner); pyramid levels not yet inspected |
-| Environment set up (M0) | Done: .venv, dependencies, package skeleton, 1 smoke test |
+| NDPI facts | All 140 slides measured (see docs/REQUIREMENTS.md section 7) |
+| Environment set up (M0) | Done: .venv, dependencies, package skeleton, lint and type checks |
 | M1 data characterisation | Done (see docs/REQUIREMENTS.md section 7) |
 | M2 unregistered volume | Done: slices 1 to 10 (19.5 GB, 11.5 min), checked in Neuroglancer |
-| M3 registration | Not started |
+| M3 registration | Not started; planned as feature-based and tissue-only (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
 
 ## Usage (current)
 
@@ -62,7 +64,8 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 - [CLAUDE.md](CLAUDE.md): rules for AI-assisted development in this repository.
 - [docs/MVP.md](docs/MVP.md): MVP scope, acceptance criteria and milestones.
 - [tasks/BACKLOG.md](tasks/BACKLOG.md): work breakdown with task status.
-- [docs/decisions/](docs/decisions/): decision records (storage format, local viewer).
+- [tasks/IMPLEMENTATION_PLAN.md](tasks/IMPLEMENTATION_PLAN.md): order of implementation, critical path, contracts.
+- [docs/decisions/](docs/decisions/): decision records (storage format, local viewer, tissue-only feature-based registration).
 
 ## Data
 

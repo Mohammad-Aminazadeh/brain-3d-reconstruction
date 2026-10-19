@@ -15,8 +15,10 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 | F7 | Registration QC: metrics, overlays, flagging of bad pairs, manual overrides | Proposed |
 | F8 | Orthogonal slice views (XY/XZ/YZ), slice slider and a 3D view | Proposed |
 | F9 | Intermediate results stored on disk so stages need not be recomputed | Proposed |
-| F10 | Tissue/background mask per slice | Proposed |
+| F10 | Tissue/background mask per slice (required by F12) | Confirmed |
 | F11 | Drift correction over the chain of 140 slices | Proposed |
+| F12 | **Tissue only.** The empty glass around the tissue is ignored: alignment uses only tissue, and the final volume contains only tissue (background removed, volume limited to the tissue extent) | Confirmed (owner, 2026-10-19) |
+| F13 | **Feature-based alignment.** Alignment detects edges and features (tissue boundaries and internal structures) in each image, finds the corresponding features in consecutive images and aligns the images by them | Confirmed (owner, 2026-10-19) |
 
 ## 2. Non-functional requirements
 
@@ -51,6 +53,10 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 4. Architecture: staged batch pipeline plus a thin tile server, a single Python package, no microservices.
 5. Registration works on low-resolution images; transforms are stored separately from pixels.
 6. Volume is stored as a chunked multi-resolution OME-Zarr store.
+7. Tissue only (F12): the background is excluded from registration (features and metrics inside the tissue mask only) and from the volume (voxels outside the mask are background; the volume is limited to the tissue extent). See `docs/decisions/0003-tissue-only-feature-based-registration.md`.
+8. Registration is feature-based (F13): tissue-boundary alignment for the initial estimate, then keypoint features matched between neighbouring slices with a robust (RANSAC) fit; boundary alignment as fallback. Intensity-based refinement only if the results show it is needed.
+9. Tissue edge in the MVP: a background rim of up to about 50 µm along the tissue edge is acceptable, so that tissue is never cut off (owner, 2026-10-19).
+10. The background outside the tissue is shown **transparent** in the viewer, so empty space contrasts with the tissue (owner, 2026-10-19).
 
 ## 5. Proposed assumptions awaiting approval
 
@@ -60,6 +66,9 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 4. MVP proves the pipeline on about 10 consecutive slices before processing all 140. (Approved)
 5. Voxel size (including Z spacing) is configuration metadata. (Approved)
 6. Generated data lives in `/Volumes/My Passport/3D Brain Reconstruction/`, outside the repository. (Approved)
+7. Outside-tissue voxels are stored as pure white (255, 255, 255; the volume's fill value), so all-background chunks are not stored at all. Tissue voxels that are exactly pure white are stored as 254, so pure white means background unambiguously and the viewer can show it transparent (decision 10). (Approved)
+8. The volume uses the registration mask (32x, about 7 µm/px) warped with the slice's transform and enlarged by a safety margin of about 50 µm, so tissue is never cut off; a thin rim of glass may remain along the edge. A finer tissue edge is a later improvement. (Approved, see decision 9)
+9. Feature detector: SIFT from OpenCV (rotation- and scale-invariant; already a dependency). ORB is compared in the spike; AKAZE is not available in the installed OpenCV 5.0 build. (Proposed)
 
 ## 6. Open questions
 
@@ -83,3 +92,5 @@ Measured on 2026-10-19 on the real files in `/Volumes/My Passport/3D FCD Alignme
 - **Measured build speed (M2):** about 1.1 min per slice from My Passport (11.5 min for 10 slices); 140 slices would take about 2.5 hours.
 - **Work drive:** My Passport is exFAT with 512 KB allocation blocks; macOS writes a `._` file per written file. Free space measured at 423 to 436 GB (it varies with other use of the drive). The drive disconnected once during a build.
 - **Orientation** of slices (flips) not yet examined.
+- **Tissue boundaries** are clearly visible in all images (owner, 2026-10-19); this is the basis for F12 and the boundary-based initial alignment. Mask quality on real slices (debris, labels, bubbles) not yet measured.
+- **OpenCV build** (installed 5.0.0): SIFT, ORB and RANSAC fitting (`estimateAffinePartial2D`) available; AKAZE not available.

@@ -13,12 +13,12 @@ Prove the whole chain on real data at reduced resolution: **10 consecutive NDPI 
 | `slides` | Read NDPI metadata and pyramid levels; read regions at a level chosen by downsample factor (OpenSlide). |
 | `catalog` | Scan the data folder, order by `N_H`, check gaps and duplicates, select a slice range; YAML project config. |
 | `store` | Work-directory layout and a JSON manifest for resuming. |
-| `preprocess` | One low-resolution grayscale registration image per slice (about 7 µm/px, 32x) and a threshold-based tissue mask. |
-| `registration` | Rigid only (rotation and translation), pair to pair, chained to slice 1. Transforms saved as small JSON files. |
-| `qc` | One numeric score per pair, an overlay image per pair, and flagging below a threshold. No manual override. |
-| `volume` | Resample slices through their transforms into an OME-Zarr 0.5 pyramid (base 4x = 0.88 µm/px, 5 levels, sharded, lossless). |
+| `preprocess` | One low-resolution grayscale registration image per slice (about 7 µm/px, 32x) and a **tissue mask** that defines what counts as tissue for all later stages (debris and labels removed). |
+| `registration` | **Feature-based, tissue only (F12, F13):** boundary-based initial alignment from the masks; SIFT features inside the tissue matched between neighbours; robust (RANSAC) fit of a rigid transform (rotation and translation); boundary alignment as fallback; chained to slice 1. Transforms and match quality saved as small JSON files. |
+| `qc` | Per pair, inside the tissue only: feature inliers and residual, masked correlation, mask overlap; an overlay with tissue outlines; flagging below a threshold. No manual override. |
+| `volume` | Resample slices through their transforms into an OME-Zarr 0.5 pyramid (base 4x = 0.88 µm/px, 5 levels, sharded, lossless), **tissue only**: background outside the masks removed, volume limited to the tissue extent. |
 | `serve` | Static, CORS-enabled hosting of the work directory; local Neuroglancer viewer link. |
-| `viewer` | Neuroglancer: orthogonal views, 3D view, zoom. |
+| `viewer` | Neuroglancer: orthogonal views, 3D view, zoom; the background outside the tissue is shown transparent. |
 | `pipeline` | `brainrec run`, `brainrec status`, `brainrec qc`, with per-slice resume. |
 | tests | Synthetic slices with known placement and known rigid transforms; unit tests per component; one end-to-end test. |
 
@@ -31,10 +31,11 @@ All 140 slices; non-rigid registration; global drift correction; manual override
 ```
 brainrec --config config/project.yaml run --slices 1-10
   catalog    -> ordered list of 10 slices
-  preprocess -> reg image + mask per slice (32x)
-  register   -> rigid transform per consecutive pair, chained to slice 1
-  qc         -> score + overlay per pair, flags
-  volume     -> volume.zarr (OME-Zarr 0.5, 4x base, 5 levels)
+  preprocess -> reg image + tissue mask per slice (32x)
+  register   -> per consecutive pair: boundary alignment, features inside the tissue,
+                matching + RANSAC rigid fit; chained to slice 1
+  qc         -> score (inside tissue) + overlay with tissue outlines per pair, flags
+  volume     -> volume.zarr (OME-Zarr 0.5, 4x base, 5 levels), tissue only
 brainrec --config config/project.yaml serve   -> local Neuroglancer link, open in Chrome
 ```
 
@@ -50,6 +51,8 @@ brainrec --config config/project.yaml serve   -> local Neuroglancer link, open i
 | R6 | Neuroglancer opens and streams the OME-Zarr | M2 | **Resolved:** works in Chrome with hardware acceleration on |
 | R7 | Slice orientation (flips) | M3 | Open |
 | R8 | Z spacing unknown | n/a | Open: placeholder 5 µm in config |
+| R9 | Tissue masks decide what is kept: no tissue cut off, no glass or debris kept (F12) | M3 | Open |
+| R10 | Real neighbouring sections yield enough reliable feature matches (F13) | M3 | Open |
 
 ## 6. Acceptance criteria
 
@@ -60,11 +63,12 @@ The MVP is accepted when all hold, each checked by a command or test that was ac
 | AC1 | `brainrec run --slices 1-10` completes on the real data from a clean work directory; a second run skips finished work. | Run log; second run reads no slice pixels |
 | AC2 | Source NDPI files are unchanged. | Fingerprint (size, mtime, SHA-256) before and after |
 | AC3 | All outputs are inside `/Volumes/My Passport/3D Brain Reconstruction/`; total size reported. | `du`, listing |
-| AC4 | On synthetic data with known shifts and rotations, registration recovers them within 1 px (at registration resolution) and 0.5°. | pytest |
-| AC5 | On real slices 1 to 10, each consecutive overlay shows matching tissue outlines (judged by the project owner); every pair has a score, and pairs below the threshold are flagged. | QC report + review |
+| AC4 | On synthetic data with known shifts and rotations (including about 45° and 170°), the feature-based registration recovers them within 1 px (at registration resolution) and 0.5°, using only features inside the tissue: synthetic debris on the background does not change the result. | pytest |
+| AC5 | On real slices 1 to 10, each consecutive overlay shows matching tissue outlines and internal structures (judged by the project owner); every pair has a score computed inside the tissue, and pairs below the threshold are flagged. | QC report + review |
 | AC6 | The volume opens in Neuroglancer in Chrome, with orthogonal and 3D views; zooming loads finer levels without errors. | Project owner, in the browser |
 | AC7 | At the base level (0.88 µm/px), tissue structure is visible down to cell scale; the achievable resolution is stated plainly. | Project owner, in the browser |
 | AC8 | Documentation matches the implementation; measured numbers replace estimates. | Review |
+| AC9 | **Tissue only:** outside the tissue masks every voxel is background (and not stored); the volume's extent is the tissue's, not the scanned glass; no tissue is cut off at the edges (a background rim of up to about 50 µm is accepted); in the viewer the background is transparent. | pytest (synthetic masks) + owner review on slices 1 to 10 |
 
 ## 7. Milestones
 
@@ -73,7 +77,7 @@ The MVP is accepted when all hold, each checked by a command or test that was ac
 | M0 | Environment and project setup | `pytest`, `ruff`, `mypy` run clean | Done (CI still to do) |
 | M1 | Data characterisation | Owner chose the base level (4x) | Done |
 | M2 | Unregistered vertical slice (10 slices, no registration) | Volume opens in Neuroglancer (R6) | Done |
-| M3 | Registration | Synthetic tests pass (AC4); real overlays reviewed (R5, R7) | To do |
+| M3 | Registration (feature-based, tissue only) | Synthetic tests pass (AC4, AC9 part); real result reviewed (R5, R7, R9, R10) | To do |
 | M4 | Quality control | Owner can see which pairs are doubtful (AC5) | To do |
 | M5 | Integration: `brainrec run` end to end | AC1, AC2, AC3, AC6 | To do |
 | M6 | MVP review | All AC met; owner sign-off | To do |

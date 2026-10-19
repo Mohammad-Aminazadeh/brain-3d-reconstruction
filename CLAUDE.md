@@ -34,6 +34,8 @@ Reconstruct a 3D volume from 140 ultra-high-resolution NDPI brain slices (about 
 - Transforms are stored separately from pixels. Registration runs on low-resolution images.
 - All stages are resumable per slice and record status in the manifest.
 - Voxel size (including Z spacing) comes from configuration, never hard-coded.
+- Only tissue matters (F12): every stage after preprocessing uses the tissue mask. Features, metrics and the volume ignore the background; the volume is limited to the tissue extent.
+- Registration is feature-based (F13): boundary-based initial alignment, keypoint matching inside the masks, robust (RANSAC) fit. Intensity-based registration may only refine, never replace, this method.
 
 ## Coding conventions
 
