@@ -45,7 +45,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # or: pip install -
 cp config/project.example.yaml config/project.yaml          # adjust paths if needed
 .venv/bin/brainrec --config config/project.yaml volume --slices 1-10
 .venv/bin/brainrec --config config/project.yaml serve        # prints a viewer link; open it in Chrome
-.venv/bin/pytest
+.venv/bin/pytest                                             # tests
+.venv/bin/ruff check src tests scripts && .venv/bin/ruff format --check src tests scripts && .venv/bin/mypy
 ```
 
 ### Viewer controls (Neuroglancer)

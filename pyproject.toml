@@ -16,7 +16,6 @@ dependencies = [
     "tifffile",
     "SimpleITK",
     "zarr>=3.1",
-    "ome-zarr",
     "neuroglancer",
     "fastapi",
     "uvicorn",

@@ -129,30 +129,44 @@ def build_volume(
             manifest.set("volume", {"signature": signature, "done": []})
         for k in range(spec.n_levels):
             h, w = H0 // 2**k, W0 // 2**k
-            (cy, sy), (cx, sx) = _grid(h, spec.chunk_xy, spec.shard_xy), _grid(
-                w, spec.chunk_xy, spec.shard_xy)
+            (cy, sy), (cx, sx) = (
+                _grid(h, spec.chunk_xy, spec.shard_xy),
+                _grid(w, spec.chunk_xy, spec.shard_xy),
+            )
             root.create_array(
-                str(k), shape=(3, len(ids), h, w), chunks=(3, 1, cy, cx), shards=(3, 1, sy, sx),
-                dtype="uint8", fill_value=255, compressors=ZstdCodec(level=3),
+                str(k),
+                shape=(3, len(ids), h, w),
+                chunks=(3, 1, cy, cx),
+                shards=(3, 1, sy, sx),
+                dtype="uint8",
+                fill_value=255,
+                compressors=ZstdCodec(level=3),
             )
         root.attrs["ome"] = {
             "version": "0.5",
-            "multiscales": [{
-                "name": "volume",
-                "axes": [
-                    {"name": "c", "type": "channel"},
-                    {"name": "z", "type": "space", "unit": "micrometer"},
-                    {"name": "y", "type": "space", "unit": "micrometer"},
-                    {"name": "x", "type": "space", "unit": "micrometer"},
-                ],
-                "datasets": [
-                    {"path": str(k), "coordinateTransformations": [{
-                        "type": "scale",
-                        "scale": [1.0, spec.z_spacing_um, mpp[1] * f, mpp[0] * f],
-                    }]}
-                    for k, f in enumerate(factors)
-                ],
-            }],
+            "multiscales": [
+                {
+                    "name": "volume",
+                    "axes": [
+                        {"name": "c", "type": "channel"},
+                        {"name": "z", "type": "space", "unit": "micrometer"},
+                        {"name": "y", "type": "space", "unit": "micrometer"},
+                        {"name": "x", "type": "space", "unit": "micrometer"},
+                    ],
+                    "datasets": [
+                        {
+                            "path": str(k),
+                            "coordinateTransformations": [
+                                {
+                                    "type": "scale",
+                                    "scale": [1.0, spec.z_spacing_um, mpp[1] * f, mpp[0] * f],
+                                }
+                            ],
+                        }
+                        for k, f in enumerate(factors)
+                    ],
+                }
+            ],
         }
         root.attrs["brainrec"] = {
             "slice_ids": ids,

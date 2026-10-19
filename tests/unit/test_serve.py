@@ -7,16 +7,29 @@ from fastapi.testclient import TestClient
 
 from brainrec.serve import create_app, hosted_url, launch_local_viewer, neuroglancer_state
 
-OME = {"version": "0.5", "multiscales": [{"datasets": [
-    {"path": "0", "coordinateTransformations": [{"type": "scale", "scale": [1.0, 5.0, 0.88, 0.88]}]}
-]}]}
+OME = {
+    "version": "0.5",
+    "multiscales": [
+        {
+            "datasets": [
+                {
+                    "path": "0",
+                    "coordinateTransformations": [
+                        {"type": "scale", "scale": [1.0, 5.0, 0.88, 0.88]}
+                    ],
+                }
+            ]
+        }
+    ],
+}
 
 
 def test_serves_files_with_cors(tmp_path):
     (tmp_path / "volume.zarr").mkdir()
     (tmp_path / "volume.zarr" / "zarr.json").write_text('{"zarr_format": 3}')
     r = TestClient(create_app(tmp_path)).get(
-        "/volume.zarr/zarr.json", headers={"Origin": "https://example.org"})
+        "/volume.zarr/zarr.json", headers={"Origin": "https://example.org"}
+    )
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "*"
 

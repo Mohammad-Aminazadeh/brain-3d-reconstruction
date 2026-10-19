@@ -20,9 +20,14 @@ def _catalog(tmp_path):
 
 
 def _build(tmp_path, spec=SPEC, factory=None, manifest=None, overwrite=False):
-    return build_volume(_catalog(tmp_path), tmp_path / "v.zarr", spec,
-                        manifest or Manifest(tmp_path / "m.json"),
-                        factory or FakeFactory(SIZES), overwrite=overwrite)
+    return build_volume(
+        _catalog(tmp_path),
+        tmp_path / "v.zarr",
+        spec,
+        manifest or Manifest(tmp_path / "m.json"),
+        factory or FakeFactory(SIZES),
+        overwrite=overwrite,
+    )
 
 
 def test_aligned_bands_split_at_multiples():

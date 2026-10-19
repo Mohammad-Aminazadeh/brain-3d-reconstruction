@@ -51,8 +51,10 @@ def characterize(path: Path) -> None:
     cx, cy = find_tissue_center(slide)
     print(f"tissue centre (level0): ({cx}, {cy})  [{time.perf_counter() - t0:.2f}s]")
 
-    print(f"\n{'lvl':>3} {'downs':>7} {'size':>16} {'um/px':>7} {'Mpx':>9} "
-          f"{'crop s':>7} {'full s':>7} {'jpeg90 B/px':>11} {'est GB/slice@q90':>16}")
+    print(
+        f"\n{'lvl':>3} {'downs':>7} {'size':>16} {'um/px':>7} {'Mpx':>9} "
+        f"{'crop s':>7} {'full s':>7} {'jpeg90 B/px':>11} {'est GB/slice@q90':>16}"
+    )
     for lvl in range(slide.level_count):
         w, h = slide.level_dimensions[lvl]
         ds = slide.level_downsamples[lvl]
@@ -71,8 +73,10 @@ def characterize(path: Path) -> None:
             t_full = time.perf_counter() - t0
         # tissue-centre crop is denser than average; treat estimate as an upper bound
         est_gb = bpp * w * h / 1e9
-        print(f"{lvl:>3} {ds:>7.1f} {w:>7}x{h:<8} {mpp_x * ds:>7.3f} {mpx:>9.1f} "
-              f"{t_crop:>7.2f} {t_full:>7.2f} {bpp:>11.3f} {est_gb:>16.2f}")
+        print(
+            f"{lvl:>3} {ds:>7.1f} {w:>7}x{h:<8} {mpp_x * ds:>7.3f} {mpx:>9.1f} "
+            f"{t_crop:>7.2f} {t_full:>7.2f} {bpp:>11.3f} {est_gb:>16.2f}"
+        )
     slide.close()
 
 

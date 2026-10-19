@@ -20,8 +20,13 @@ _SHADER = (
 
 def create_app(root: Path) -> FastAPI:
     app = FastAPI(title="brainrec")
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"],
-                       allow_headers=["*"], expose_headers=["Content-Range", "Accept-Ranges"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET"],
+        allow_headers=["*"],
+        expose_headers=["Content-Range", "Accept-Ranges"],
+    )
     app.mount("/", StaticFiles(directory=str(root)), name="data")
     return app
 
@@ -45,18 +50,24 @@ def neuroglancer_state(
         "gpuMemoryLimit": gpu_memory_mb * 1_000_000,
         "systemMemoryLimit": system_memory_mb * 1_000_000,
         "concurrentDownloads": concurrent_downloads,
-        "layers": [{
-            "type": "image",
-            "name": "brain",
-            "source": {
-                "url": f"zarr3://{volume_url}",
-                "transform": {"outputDimensions": {
-                    "c^": [1, ""], "z": [sz * 1e-6, "m"], "y": [sy * 1e-6, "m"],
-                    "x": [sx * 1e-6, "m"],
-                }},
-            },
-            "shader": _SHADER,
-        }],
+        "layers": [
+            {
+                "type": "image",
+                "name": "brain",
+                "source": {
+                    "url": f"zarr3://{volume_url}",
+                    "transform": {
+                        "outputDimensions": {
+                            "c^": [1, ""],
+                            "z": [sz * 1e-6, "m"],
+                            "y": [sy * 1e-6, "m"],
+                            "x": [sx * 1e-6, "m"],
+                        }
+                    },
+                },
+                "shader": _SHADER,
+            }
+        ],
         "layout": layout,
     }
 

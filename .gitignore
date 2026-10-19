@@ -12,3 +12,10 @@ Data Sample/
 *.ndpi
 *.zarr/
 config/project.yaml
+
+# build and test artefacts
+build/
+dist/
+.coverage
+htmlcov/
+*.log
