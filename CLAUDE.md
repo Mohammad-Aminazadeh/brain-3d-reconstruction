@@ -24,6 +24,8 @@ Reconstruct a 3D volume from 140 ultra-high-resolution NDPI brain slices (about 
 - Write generated data only to the configured work directory, never into the repository.
 - Do not read all 140 files in tests. Tests use synthetic data or small crops.
 - Check free disk space before writing large outputs (internal disk has about 26 GB free).
+- The work drive is exFAT with 512 KB blocks and macOS adds a `._` file per written file: keep the number of output files low (shards, not one file per chunk).
+- Never replace an existing generated volume silently; require an explicit overwrite.
 
 ## Architecture constraints
 

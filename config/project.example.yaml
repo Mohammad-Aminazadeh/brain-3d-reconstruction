@@ -1,0 +1,5 @@
+data_dir: "/Volumes/My Passport/3D FCD Alignment"
+work_dir: "/Volumes/My Passport/3D Brain Reconstruction"
+z_spacing_um: 5.0   # PLACEHOLDER: real section spacing unknown; only affects Z proportions
+base_downsample: 4  # 4 = 0.88 um/px
+n_levels: 5

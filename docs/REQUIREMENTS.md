@@ -23,7 +23,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 | Area | Requirement | Status |
 |---|---|---|
 | Memory | Never load a full slice at full resolution (24 GB RAM machine); work on pyramid levels or tiles | Forced by data |
-| Storage | Outputs must fit the available space (467 GB free on the external drive; 26 GB free internally) | Forced by data |
+| Storage | Outputs must fit the available space (about 423 GB free on the external drive; 26 GB free internally) | Forced by data |
 | Quality | Preserve cellular detail at the highest resolution made available | Confirmed |
 | Interactivity | Smooth pan and zoom with progressive loading | Proposed |
 | Reproducibility | Same input and parameters give the same output; parameters stored with results | Proposed |
@@ -37,7 +37,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 - Source: 140 NDPI files, 0.97 to 3.8 GB each (402 GB total, measured), in `/Volumes/My Passport/3D FCD Alignment/`, read in place (never copied).
 - Sample slice: `Data Sample/250_23_II16_1_H - 2024-11-11 15.08.23.ndpi`.
 - The external drive is likely to be the I/O bottleneck.
-- Free space: 467 GB on My Passport, about 26 GB on the internal disk.
+- Free space: about 423 GB on My Passport (measured 2026-10-19), about 26 GB on the internal disk.
 - NDPI is a proprietary TIFF variant. First slice (reported by the project owner): 139776 x 102144 px, 220 nm/pixel (115454 DPI), about 30.75 x 22.47 mm, about 14.3 Gpx (about 43 GB raw RGB). Other slices differ: see section 7 (measured in M1).
 - In-plane voxel size is therefore 0.22 um; Z spacing is unknown (micrometre order).
 - Section thickness and spacing are on the order of micrometres; the exact value is unknown.
@@ -65,7 +65,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 
 1. Exact section thickness and spacing (µm), to be obtained from the lab.
 2. NDPI pyramid levels (dimensions and pixel size are known for slice 1; to be verified for the rest).
-3. Exact precomputed resolution floor (about 0.88 µm/px at 4x down, or about 0.44 µm/px at 2x), decided after measuring real compression.
+3. Resolution floor: 4x (0.88 µm/px) accepted for now. 2x does not fit losslessly; it would need a lossy viewer format.
 4. Can the native-resolution on-demand path read the external drive fast enough? To be measured.
 5. Which viewer to use if Neuroglancer's UX proves unsuitable?
 
@@ -78,5 +78,8 @@ Measured on 2026-10-19 on the real files in `/Volumes/My Passport/3D FCD Alignme
 - **Slice size varies a lot** (tissue shrinks towards the end of the block): width 71680 to 157696 px (median 132608), height 48384 to 107520 px (median 91392). Examples: slice 1 is 139776 x 102144, slice 20 is 146944 x 107520, slice 70 is 129024 x 96768, slice 140 is 89600 x 48384. The "all slices similar" assumption is **false**: the volume canvas must be the bounding box over all slices, with per-slice offsets.
 - **Pyramid level count varies** (9, 10 or 11 levels). Levels 0 to 3 always have downsample 1, 2, 4, 8. **Code must select levels by downsample factor, never by index.**
 - **Read speed** (2048 x 2048 crop at the tissue centre): about 0.07 s from the internal disk, about 0.5 to 1.5 s from My Passport at levels 0 to 2 on a cold read; whole levels of up to 14 Mpx read in under 0.1 s, and a 56 Mpx level (16x) in about 0.4 to 1.3 s. Coarse levels are not a bottleneck.
-- **Compressibility** (JPEG q90 of a tissue-centre crop, so an upper bound per pixel): about 0.3 to 0.4 bytes/px. Estimated upper bound per slice for 140 slices: native about 4.5 GB, 2x about 1.3 GB, 4x about 0.35 GB. For the whole volume (140 slices, plus about 33% for the pyramid): **4x about 65 GB, 2x about 240 GB**, if stored with a JPEG-class codec. Zarr with a lossless codec would be several times larger; the codec choice is open.
+- **Compressibility** (M1 estimate, JPEG q90): 0.3 to 0.4 bytes/px. Not usable as such: Neuroglancer cannot read JPEG-compressed Zarr (see `docs/decisions/0001-volume-storage-format.md`).
+- **Measured volume size (M2, lossless zstd, sharded):** slices 1 to 10 take 19.5 GB for all 5 levels (about 1.95 GB per slice; level 0 alone about 1.45 GB), in 960 files. Slices 1 to 10 are among the largest, so 140 slices should need at most about 275 GB.
+- **Measured build speed (M2):** about 1.1 min per slice from My Passport (11.5 min for 10 slices); 140 slices would take about 2.5 hours.
+- **Work drive:** My Passport is exFAT with 512 KB allocation blocks; macOS writes a `._` file per written file. Free space measured at 423 to 436 GB (it varies with other use of the drive). The drive disconnected once during a build.
 - **Orientation** of slices (flips) not yet examined.

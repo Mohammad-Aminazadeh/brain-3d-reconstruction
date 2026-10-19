@@ -23,7 +23,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 ## Current development status
 
-**Phase: M0 complete (environment and skeleton). No application functionality yet.**
+**Phase: M2 (unregistered volume of slices 1 to 10, viewable in Neuroglancer). No registration yet.**
 
 | Item | Status |
 |---|---|
@@ -32,13 +32,28 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 | Development rules | See [CLAUDE.md](CLAUDE.md) |
 | NDPI facts | Slice 1: 139776 x 102144 px at 220 nm/px (reported by owner); pyramid levels not yet inspected |
 | Environment set up (M0) | Done: .venv, dependencies, package skeleton, 1 smoke test |
-| Implementation | Not started |
+| M1 data characterisation | Done (see docs/REQUIREMENTS.md section 7) |
+| M2 unregistered volume | Built for slices 1 to 10 (19.5 GB, 11.5 min); awaiting visual check in the browser |
+| M3 registration | Not started |
+
+## Usage (current)
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # or: pip install -r requirements-lock.txt
+cp config/project.example.yaml config/project.yaml          # adjust paths if needed
+.venv/bin/brainrec --config config/project.yaml volume --slices 1-10
+.venv/bin/brainrec --config config/project.yaml serve        # prints a viewer link; open it in Chrome
+.venv/bin/pytest
+```
 
 ## Documentation
 
 - [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md): what the system must do and the decisions taken so far.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components, data flow, interfaces and technology choices.
 - [CLAUDE.md](CLAUDE.md): rules for AI-assisted development in this repository.
+- [docs/MVP.md](docs/MVP.md): MVP scope, acceptance criteria and milestones.
+- [tasks/BACKLOG.md](tasks/BACKLOG.md): work breakdown with task status.
+- [docs/decisions/](docs/decisions/): decision records (storage format, local viewer).
 
 ## Data
 

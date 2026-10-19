@@ -11,3 +11,4 @@ __pycache__/
 Data Sample/
 *.ndpi
 *.zarr/
+config/project.yaml

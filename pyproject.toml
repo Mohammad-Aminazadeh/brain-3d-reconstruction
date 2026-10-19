@@ -15,8 +15,9 @@ dependencies = [
     "openslide-bin",
     "tifffile",
     "SimpleITK",
-    "zarr",
+    "zarr>=3.1",
     "ome-zarr",
+    "neuroglancer",
     "fastapi",
     "uvicorn",
     "pydantic",
@@ -24,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "mypy"]
+dev = ["pytest", "ruff", "mypy", "httpx"]
 
 [project.scripts]
 brainrec = "brainrec.pipeline.cli:main"
@@ -37,3 +38,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.mypy]
+files = ["src"]
+ignore_missing_imports = true

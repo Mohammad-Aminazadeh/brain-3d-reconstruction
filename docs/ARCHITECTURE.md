@@ -95,17 +95,21 @@ Python signatures (type-annotated, shown as pseudocode). These are the contracts
 
 ```
 # slides
-class SlideReader:
+class SlideReader:                     # implemented (M2)
     @classmethod open(path: Path) -> SlideReader
-    levels: list[LevelInfo]            # width, height, downsample
+    levels: list[LevelInfo]            # index, downsample, width, height
     mpp: tuple[float, float]           # microns per pixel at level 0
-    read_region(level: int, x: int, y: int, w: int, h: int) -> ndarray  # RGB uint8
+    level_for_downsample(downsample: float) -> int   # level counts differ per file: never index by position
+    read_region(level: int, x: int, y: int, w: int, h: int) -> ndarray  # RGB uint8, (x, y) in level pixels; transparent -> white
+    close() -> None
 
 # catalog
-class Catalog:
-    @classmethod scan(data_dir: Path, config: ProjectConfig) -> Catalog
-    slices: list[SliceRef]             # id (int N), path, in order
-    voxel_size: tuple[float, float, float]  # um, Z from config
+class Catalog:                         # implemented (M2)
+    @classmethod scan(data_dir: Path, id_range: tuple[int, int] | None = None) -> Catalog
+    slices: list[SliceRef]             # id (int N), path, in order; raises on gaps or duplicates
+class ProjectConfig:                   # data_dir, work_dir, z_spacing_um, base_downsample, n_levels
+    @classmethod load(path: Path) -> ProjectConfig
+# Voxel size is not on Catalog (as first drafted): x/y come from the slides' mpp, z from ProjectConfig.
 
 # preprocess
 make_reg_image(slice: SliceRef, out_dir: Path) -> Path
@@ -122,17 +126,30 @@ score_pair(fixed: Path, moving: Path, t: Transform) -> PairScore
 render_overlay(fixed, moving, t, out: Path) -> Path
 apply_override(slice_id: int, t: Transform, store: Store) -> None
 
-# volume
-build_volume(catalog: Catalog, transforms: list[Transform], out: Path, levels: int) -> Path
+# store                              # implemented (M2)
+WorkDir(root).manifest, .volume        # the only place that knows file names
+Manifest(path).get(key), .set(key, value)   # JSON, atomic write
 
-# serve (HTTP)
-GET /volume/{path}                 # raw Zarr chunks, CORS enabled
-GET /tile/{z}/{level}/{x}/{y}      # post-MVP, native-resolution tile
+# volume                             # implemented (M2), without transforms
+VolumeSpec(z_spacing_um, base_downsample=4, n_levels=5, chunk_xy=512, shard_xy=4096)
+build_volume(catalog, out: Path, spec: VolumeSpec, manifest: Manifest | None = None,
+             reader_factory=SlideReader.open, overwrite: bool = False) -> Path
+    # M3 adds: transforms: list[Transform] | None = None  (None = slices centred, as in M2)
+    # Raises VolumeExistsError if `out` exists with other settings and overwrite is False.
+
+# serve                              # implemented (M2)
+create_app(root: Path) -> FastAPI      # static files of the work dir, CORS + range requests
+neuroglancer_state(volume_url, ome) -> dict   # RGB layer; OME axis c mapped to channel dim "c^"
+launch_local_viewer(state, port=0) -> neuroglancer.Viewer   # served from 127.0.0.1; caller keeps it alive (weak refs)
+GET /volume.zarr/{path}                # Zarr metadata and shard files
+GET /tile/{z}/{level}/{x}/{y}          # post-MVP, native-resolution tile
 
 # pipeline (CLI)
-brainrec run [--stage S] [--slices A-B]
-brainrec status
-brainrec qc
+brainrec --config C volume --slices A-B [--overwrite]   # interim (M2)
+brainrec --config C serve [--port 8000]                # interim (M2); viewer on port+1
+brainrec run [--stage S] [--slices A-B]                # M5
+brainrec status                                        # M5
+brainrec qc                                            # M4
 ```
 
 ## 6. Technology decisions
@@ -140,13 +157,13 @@ brainrec qc
 | Concern | Choice | Rationale | Trade-off |
 |---|---|---|---|
 | Language | Python 3.12+ | Best ecosystem for whole-slide images, registration and Zarr | Slower than C++; heavy loops run in native libraries |
-| NDPI reading | OpenSlide (`openslide-python`), tifffile as fallback | Lazy tile access to NDPI | Needs native library via Homebrew |
-| Storage | OME-Zarr (`zarr`, `ome-zarr-py`) | Chunked, multi-resolution, viewer-friendly, resumable | Many small files; chunk size needs tuning |
+| NDPI reading | OpenSlide (`openslide-python` + `openslide-bin`), tifffile as fallback | Lazy tile access to NDPI; `openslide-bin` bundles the native library in the venv | |
+| Storage | OME-Zarr 0.5 on Zarr v3, sharded (512 px chunks in 4096 px shards), zstd lossless | Chunked, multi-resolution, resumable; shards keep the file count low on the exFAT drive (512 KB blocks, a `._` file per file) | Lossless only: Neuroglancer's Zarr reader has no JPEG codec (see docs/decisions/0001) |
 | Image ops | numpy, scikit-image, OpenCV | Standard and fast | |
 | Registration | SimpleITK (elastix later if needed) | Mature multi-resolution rigid and B-spline, serialisable transforms | Steeper learning curve |
 | Parallelism | `concurrent.futures`; Dask only if needed | Simplicity | |
 | Server | FastAPI + uvicorn | Lightweight, testable | |
-| Viewer | Neuroglancer (MVP) | Solves 3D streaming and orthogonal views, saving weeks | Less control over UX; replaceable, isolated to `viewer/` and `serve/` |
+| Viewer | Neuroglancer (MVP), served locally by the `neuroglancer` Python package | Solves 3D streaming and orthogonal views, saving weeks; local serving avoids a public page reading from localhost | Less control over UX; replaceable, isolated to `serve/` |
 | Config | YAML + pydantic | Validated and versionable | |
 | Packaging | `pyproject.toml` (uv or pip) | Reproducible | |
 | Testing | pytest, synthetic slice generator | Independent tests without the real data | |
@@ -157,7 +174,8 @@ brainrec qc
 Brain 3D Reconstruction/
 ├── pyproject.toml
 ├── README.md, CLAUDE.md
-├── config/project.example.yaml
+├── config/project.example.yaml   (copy to config/project.yaml, git-ignored)
+├── requirements-lock.txt         (exact versions, from pip freeze)
 ├── src/brainrec/
 │   ├── slides/  catalog/  preprocess/  registration/
 │   ├── qc/  volume/  serve/  store/  pipeline/
@@ -172,7 +190,9 @@ Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
 
 ## 8. Risks and limitations
 
-- **Storage:** 467 GB free vs. 402 GB of sources. Each slice is 139776 x 102144 px at 220 nm/px (about 14.3 Gpx, about 31 x 22 mm), i.e. about 43 GB raw RGB per slice and about 6 TB for 140. Native-resolution precomputation is infeasible; it must be served on demand (post-MVP) and may be slow from the external drive. Estimates for a precomputed floor: 4x downsample (0.88 um/px) is about 2.7 GB raw per slice (about 375 GB raw, roughly tens of GB with JPEG-type compression); 2x (0.44 um/px) is about 10.7 GB raw per slice (about 1.5 TB raw, possibly around 100 GB compressed, to be measured). The floor is chosen after measuring real compression.
+- **Storage:** about 423 GB free on My Passport (402 GB of it already holds the sources). Raw RGB is about 43 GB per slice at native resolution, about 6 TB for 140, so native resolution cannot be precomputed and must be served on demand (post-MVP). Measured in M2 (lossless zstd): the 4x base level is about 1.45 GB of data per slice, about 2 GB with the pyramid, so **about 280 GB for all 140 slices**. That fits, with limited margin. The 2x floor (about 4x larger) would not fit losslessly.
+- **exFAT drive:** 512 KB allocation blocks, and macOS writes a `._` file per written file (for the `com.apple.provenance` attribute). Many small files waste space (measured 3x) and make directory listings take minutes. Mitigated by sharding; any future output format must also keep the file count low.
+- **Drive disconnects:** the drive dropped out once during an M2 build. Builds resume per slice; a disconnect costs at most one slice.
 - **Drift:** errors accumulate across 140 chained pairs; mitigated by drift correction and QC; unsolved in general.
 - **Non-rigid distortion:** can deform real anatomy; kept behind a flag.
 - **Damaged sections** (tears, folds) will need manual overrides.
