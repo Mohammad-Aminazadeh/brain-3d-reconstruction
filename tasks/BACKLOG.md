@@ -37,7 +37,7 @@ Conventions that apply to every task (not repeated below):
 | M2-08 | Interim CLI (`volume`, `serve`) | pipeline | Low | Done | M2-03, M2-05, M2-07 |
 | M2-09 | Real build, slices 1 to 10 | integration | Low | Done | M2-08 |
 | M2-10 | Visual check in Neuroglancer | integration | Low | Done | M2-09 |
-| M2-11 | Close M2 test gaps (config, CLI) | tests | Low | To do | M2-08 |
+| M2-11 | Close M2 test gaps (config, CLI) | tests | Low | Done | M2-08 |
 | M3-06 | **Real-data spike: orientation, tissue masks, feature matching (first M3 task)** | integration | Medium | Done | none |
 | M3-00 | Registration contracts (C1 to C12) | docs | Low | Done (approved 2026-10-20) | M3-06 |
 | M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | Done | M2-04, M3-00 |
@@ -228,7 +228,7 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
 - **Outputs:** `ProjectConfig.load()`; `config/project.example.yaml`. **Depends on:** M0-03.
 - **Files:** `src/brainrec/catalog/config.py`, `config/project.example.yaml`.
 - **Acceptance:** loads the example; `z_spacing_um` marked as placeholder.
-- **Tests:** missing, see M2-11.
+- **Tests:** `tests/unit/test_config.py` (added in M2-11).
 
 ### Component: store
 
@@ -273,7 +273,7 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
 - **Objective:** Run M2 from the command line until `brainrec run` exists (M5).
 - **Depends on:** M2-03, M2-05, M2-07. **Files:** `src/brainrec/pipeline/cli.py`.
 - **Acceptance:** `brainrec --config C volume --slices 1-10 [--overwrite]`; `brainrec --config C serve`.
-- **Tests:** missing, see M2-11.
+- **Tests:** `tests/unit/test_cli.py` (added in M2-11).
 
 ### Component: integration
 
@@ -299,11 +299,16 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
 
 ### Component: tests
 
-#### M2-11 Close M2 test gaps (config, CLI) · Low · To do
+#### M2-11 Close M2 test gaps (config, CLI) · Low · Done
 - **Objective:** Cover the two untested pieces of M2.
 - **Depends on:** M2-08. **Files:** `tests/unit/test_config.py`, `tests/unit/test_cli.py`.
 - **Acceptance:** config: loads valid YAML, rejects a missing field; CLI: `--slices 3-7` parses to (3, 7), `--slices 5` to (5, 5), and `volume` on an existing different volume exits with an error message instead of a traceback.
 - **Tests:** the two new files.
+- **Result (2026-10-20):**
+  - **Code:** tests only, no source change.
+  - **Tests:** 15 new. Config (7): valid YAML loads with defaults; values override defaults (YAML list to tuple); each of the three required fields missing is rejected; a wrong type is rejected; the shipped example loads. CLI (8, run in-process with fake slides): `--slices 3-7` selects slices 3 to 7 and `--slices 5` slice 5; malformed values are a usage error (exit 2); config values and the work dir reach the builder and the output path is printed; an existing volume with other settings stops with an `error:` message (no traceback) and is kept, `--overwrite` replaces it; `serve` on a volume without OME metadata stops with an error message.
+  - **Mutation check:** four deliberate breaks of the CLI (error not caught, single slice parsed wrongly, `--overwrite` ignored, config z spacing ignored), each on a scratch copy, each fail at least one test.
+  - **Gaps found, not fixed (outside the acceptance):** common user errors still end in a traceback: `serve` before a volume exists, `--slices` with missing ids or a reversed range (reported as "no slices found"), a missing or empty config file. A misspelled optional config key is silently ignored and its default used (for example `base_downsampel: 8` builds at 4x). Both added to M3-10 (owner, 2026-10-20).
 
 ---
 
@@ -469,9 +474,12 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 #### M3-10 Interim CLI: `preprocess`, `register` · Low · To do
 - **Objective:** Run M3 stages on real data before the M5 runner exists.
 - **Outputs:** `brainrec preprocess --slices A-B`, `brainrec register --slices A-B`; `brainrec volume` uses chained transforms when they exist (`--unregistered` to force M2 mode).
-- **Depends on:** M3-08, M3-09, M2-11 (creates `tests/unit/test_cli.py`). **Files:** `src/brainrec/pipeline/cli.py`, README usage.
-- **Acceptance:** each command runs on a synthetic temp work dir.
-- **Tests:** `tests/unit/test_cli.py` (extended).
+- **Also (gaps found in M2-11; owner, 2026-10-20):**
+  - **User errors:** known user errors end with a one-line `error: <message>` (exit status 1) instead of a traceback: missing or empty config file, invalid config, slice range with missing ids or reversed, `serve` before a volume exists, existing volume or stage output from other settings, failed registration. Programming errors still show the traceback.
+  - **Strict config (interface change):** `ProjectConfig` rejects unknown keys, so a misspelled setting stops with an error naming it instead of silently using the default. Consequence: config files may contain only known keys (the example and the owner's current `config/project.yaml` do).
+- **Depends on:** M3-08, M3-09, M2-11 (creates `tests/unit/test_cli.py`). **Files:** `src/brainrec/pipeline/cli.py`, `src/brainrec/catalog/config.py`, README usage, `docs/ARCHITECTURE.md` (C9).
+- **Acceptance:** each command runs on a synthetic temp work dir; each listed user error gives an `error:` message and no traceback; a config with an unknown key is rejected, naming the key.
+- **Tests:** `tests/unit/test_cli.py` and `tests/unit/test_config.py` (extended).
 
 ### Component: serve
 
