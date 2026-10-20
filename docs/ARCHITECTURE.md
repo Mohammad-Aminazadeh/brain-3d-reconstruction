@@ -125,7 +125,8 @@ preprocess_slice(slice: SliceRef, work: WorkDir, cfg: ProjectConfig,
 
 # registration                       # M3, feature-based (F13), tissue only (F12), similarity (C2, C3)
 RegImage(slice_id, image, mask, downsample, mpp_um)    # .load(work, id); .coarse() = 2x area-downsampled copy (64x)
-Transform2D                          # see C2: similarity, slice -> reference, µm
+Transform2D                          # implemented (M3-05), registration/transform.py; see C2
+px_to_um(points, downsample, mpp), um_to_px(...)   # implemented (M3-05): the C1 helpers
 initial_from_masks(fixed: RegImage, moving: RegImage) -> Transform2D   # centroid + principal axes, 2 candidates
 detect_features(img: RegImage, cfg) -> Features        # ORB keypoints + descriptors inside the mask only
 guided_match(fixed: Features, moving: Features, predict: Transform2D, window_um: float, cfg) -> Matches
@@ -196,7 +197,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
   - `identity()`, `similarity(angle_rad, scale, tx_um, ty_um)`, `from_matrix(A, family)`, which validates the family;
   - `matrix`, `inverse()`, and `a.compose(b)` = a∘b (b applied first);
   - `apply(points_um)`, `angle_deg`, `scale`;
-  - `to_pixels(src_downsample, dst_downsample, mpp)`, giving the 3x3 matrix from source-level pixels to destination-level pixels.
+  - `to_pixels(src_downsample, dst_downsample, mpp)`, giving the 3x3 matrix from source-level pixels to destination-level pixels, and its inverse `from_pixels(matrix_px, src_downsample, dst_downsample, mpp)`, which converts OpenCV's pixel-space result to µm;
 - **File format:** `save()`/`load()` use JSON `{"schema": "brainrec.transform/1", "family": "similarity", "matrix_um": [[...], [...]]}`.
 - `register_pair(fixed, moving)` returns the transform **moving → fixed**. OpenCV's RANSAC result maps moving keypoints onto fixed keypoints in pixels and is converted with C1.
 - **Chain:** T(k → ref) = T(ref+1 → ref) ∘ … ∘ T(k → k−1).

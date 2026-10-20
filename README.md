@@ -36,7 +36,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 | Environment set up (M0) | Done: .venv, dependencies, package skeleton, lint and type checks |
 | M1 data characterisation | Done (see docs/REQUIREMENTS.md section 7) |
 | M2 unregistered volume | Done: slices 1 to 10 (19.5 GB, 11.5 min), checked in Neuroglancer |
-| M3 registration | Not started; planned as feature-based and tissue-only (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
+| M3 registration | In progress: spike (M3-06), contracts (M3-00) and transform model (M3-05) done; feature-based, tissue-only, similarity (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
 
 ## Usage (current)
 
