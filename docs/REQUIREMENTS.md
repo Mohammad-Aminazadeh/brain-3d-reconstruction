@@ -57,10 +57,15 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 8. Registration is feature-based (F13): tissue-boundary alignment for the initial estimate, then keypoint features matched between neighbouring slices with a robust (RANSAC) fit; boundary alignment as fallback. Intensity-based refinement only if the results show it is needed.
 9. Tissue edge in the MVP: a background rim of up to about 50 µm along the tissue edge is acceptable, so that tissue is never cut off (owner, 2026-10-19).
 10. The background outside the tissue is shown **transparent** in the viewer, so empty space contrasts with the tissue (owner, 2026-10-19).
+11. **Similarity transform** (rotation, uniform scale, translation) instead of rigid only (owner, 2026-10-20). Spike: rigid residual up to 242 µm against 16 to 19 µm with similarity.
+12. **Guided two-pass ORB matching** is the main registration method: boundary-based estimate, then a 2.5 mm search window, then a 0.3 mm window. No mirror handling, since no mirrored slices were found (owner, 2026-10-20).
+13. **Coarse-to-fine registration:** 64x for the first pass and 32x for the second, both from the same 32x read (owner, 2026-10-20).
+14. **Detached tissue fragments count as tissue** and are kept (owner, 2026-10-20). Masks keep every component above a small absolute size (debris specks are below 0.2 mm²) and include pale tissue connected to clearly stained tissue.
+15. **Damaged margins** (folds, tears, compression) may stay hundreds of µm off in the MVP; non-rigid correction comes after the MVP (owner, 2026-10-20).
 
 ## 5. Proposed assumptions awaiting approval
 
-1. Rigid (plus affine) registration first; non-rigid behind a flag later.
+1. Registration uses a similarity transform (rotation, uniform scale, translation) in the MVP; affine and non-rigid later. (Approved 2026-10-20, from the spike results; replaces "rigid first")
 2. Precomputed volume resolution floor of about 1 µm/pixel (0.88 or 0.44 µm/px, see open questions); native resolution served on demand, after the MVP. (Approved)
 3. Neuroglancer as the MVP viewer. (Approved)
 4. MVP proves the pipeline on about 10 consecutive slices before processing all 140. (Approved)
@@ -94,3 +99,33 @@ Measured on 2026-10-19 on the real files in `/Volumes/My Passport/3D FCD Alignme
 - **Orientation** of slices (flips) not yet examined.
 - **Tissue boundaries** are clearly visible in all images (owner, 2026-10-19); this is the basis for F12 and the boundary-based initial alignment. Mask quality on real slices (debris, labels, bubbles) not yet measured.
 - **OpenCV build** (installed 5.0.0): SIFT, ORB and RANSAC fitting (`estimateAffinePartial2D`) available; AKAZE not available.
+
+### Spike results (M3-06, 2026-10-19, `scripts/spike_registration.py`, slices 1 to 10, all 9 neighbouring pairs)
+
+Outputs in `/Volumes/My Passport/3D Brain Reconstruction/spike/` (29 files, 99 MB): `contact_sheet.png`, `overlay_<k>.png` and `matches_<k>.png` (global matching), `overlay_guided_<k>.png` (guided matching), `results.json`. Sources were only read (32x level; 16x and 64x for one comparison).
+
+- **Orientation (R7):** no mirrored slices among 1 to 10. Visually consistent orientation; strong pairs give 42 to 186 inliers normally against 3 to 10 when mirrored. Rotations between neighbours are small (0.7° to 5°).
+- **Tissue masks (R9):** Otsu on colour saturation plus cleanup gives one tissue region per slice, 370 to 427 mm². Scan-edge streaks and most debris are excluded; folds are included. Pale detached fragments at the left of slices 6 to 10 were excluded; owner decision: keep them (decision 14). Cause: fragments of 0.6 to 2.8 mm² pass the threshold but were removed by the 1%-of-tissue rule (about 4.2 mm²), and their pale parts lie at the Otsu threshold (saturation about 18; glass 9 to 10, tissue 27 to 30).
+- **Tissue size differs between sections:** slices 1 to 5 have about 390 mm² of tissue, slices 6 to 10 about 425 mm² (slice 5: 370 mm²). Slice 5 is compressed, folded and torn.
+- **Feature matching (R10):**
+  - *Global matching* (ratio test over the whole image) is weak: SIFT keeps 4 to 58 inliers per pair, ORB 11 to 186. The uniform tissue texture makes most correct matches ambiguous, and fits with few inliers are unreliable.
+  - *Guided matching* works:
+    - **Pass 1** searches a 2.5 mm window around the boundary-based estimate.
+    - **Pass 2** searches a 0.3 mm window around the pass-1 fit.
+    - **Inliers:** ORB keeps 62 to 882 per pair, SIFT 24 to 291. ORB beats SIFT on every pair.
+    - **Speed:** about 5 s per pair at 32x.
+- **Boundary-based initial alignment:**
+  - **Shape overlap (IoU):** 0.83 to 0.98.
+  - **Agreement with the feature result:** within 0.2° to 6.4° in angle and 3 to 900 µm at the centroid.
+  - **Use:** good enough to seed guided matching, not as a final result.
+- **Rigid vs similarity (R5, C3):** on the same inliers, the rigid residual is 18 to 242 µm and the similarity residual (with uniform scale) 16 to 19 µm.
+  - **Scale factors:** 0.997 to 1.013 for most pairs. Pair 5→6 is 0.91, because slice 5 is compressed.
+  - **Conclusion:** rigid is clearly insufficient for 7 of 9 pairs; similarity is needed.
+- **Resolution:**
+  - **64x:** most guided ORB inliers (544 vs 299 at 32x for pair 1→2; 108 vs 62 for pair 5→6), and fastest.
+  - **16x:** worst.
+  - **Interpretation:** the correspondence between sections lies in larger structures, not in fine detail.
+  - **Scale depends on resolution for the damaged pair 5→6** (0.87 at 16x, 0.91 at 32x, 0.96 at 64x). That is a sign of uneven deformation.
+- **Accuracy to expect:**
+  - **Undamaged areas:** the inlier residual is about 17 µm, roughly 2.5 registration pixels or 20 base pixels at 0.88 µm/px. That is structure-level alignment: vessels and layers line up; individual cells do not correspond between sections anyway.
+  - **Damaged areas:** at folds, tears and compressed margins (slices 4 and 5), edges stay off by hundreds of µm after any global transform. The best mask overlap after guided matching is 0.84 for pairs 4→5 and 5→6, against 0.93 to 0.98 for undamaged pairs. Fixing this needs non-rigid registration (post-MVP).

@@ -47,12 +47,12 @@ brainrec --config config/project.yaml serve   -> local Neuroglancer link, open i
 | R2 | Which pyramid levels exist | M1 | **Resolved:** 1, 2, 4, 8 ... always present; level count varies (9 to 11) |
 | R3 | OpenSlide reads these NDPI files | M1 | **Resolved:** yes, all 140 |
 | R4 | Volume size and storage | M1, M2 | **Resolved:** about 2 GB/slice lossless, about 280 GB for 140 slices; exFAT needs sharding |
-| R5 | Rigid registration aligns real adjacent slices | M3 | Open |
+| R5 | Rigid registration aligns real adjacent slices | M3 | **Partly resolved (spike):** rigid is not enough (residual up to 242 µm); similarity (with uniform scale) fits to 16 to 19 µm. Damaged margins need non-rigid (post-MVP) |
 | R6 | Neuroglancer opens and streams the OME-Zarr | M2 | **Resolved:** works in Chrome with hardware acceleration on |
-| R7 | Slice orientation (flips) | M3 | Open |
+| R7 | Slice orientation (flips) | M3 | **Resolved for slices 1 to 10 (spike):** no mirrored slices |
 | R8 | Z spacing unknown | n/a | Open: placeholder 5 µm in config |
-| R9 | Tissue masks decide what is kept: no tissue cut off, no glass or debris kept (F12) | M3 | Open |
-| R10 | Real neighbouring sections yield enough reliable feature matches (F13) | M3 | Open |
+| R9 | Tissue masks decide what is kept: no tissue cut off, no glass or debris kept (F12) | M3 | **Resolved (spike):** saturation-based masks are clean; detached fragments are kept as tissue (owner, 2026-10-20), which the mask rule in M3-04 must implement |
+| R10 | Real neighbouring sections yield enough reliable feature matches (F13) | M3 | **Resolved (spike) with guided matching:** ORB 62 to 882 inliers per pair; global matching alone is not enough |
 
 ## 6. Acceptance criteria
 

@@ -38,7 +38,7 @@ Conventions that apply to every task (not repeated below):
 | M2-09 | Real build, slices 1 to 10 | integration | Low | Done | M2-08 |
 | M2-10 | Visual check in Neuroglancer | integration | Low | Done | M2-09 |
 | M2-11 | Close M2 test gaps (config, CLI) | tests | Low | To do | M2-08 |
-| M3-06 | **Real-data spike: orientation, tissue masks, feature matching (first M3 task)** | integration | Medium | To do | none |
+| M3-06 | **Real-data spike: orientation, tissue masks, feature matching (first M3 task)** | integration | Medium | Done | none |
 | M3-00 | Registration contracts (C1 to C12) | docs | Low | To do | M3-06 |
 | M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | To do | M2-04, M3-00 |
 | M3-02 | Synthetic tissue and rigid-transform generator | tests | Medium | To do | M0-05, M3-00 |
@@ -316,12 +316,14 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: integration (first)
 
-#### M3-06 Real-data spike: orientation, tissue masks, feature matching · Medium · To do
+#### M3-06 Real-data spike: orientation, tissue masks, feature matching · Medium · Done
 - **Objective:** Before writing registration code, check on real slices: are some slices mirrored (R7)? Do simple masks capture the tissue without glass or debris (R9)? Do neighbouring sections give enough reliable SIFT/ORB matches inside the tissue, and is a rigid fit enough (R10, R5)?
 - **Inputs:** 32x level of slices 1 to 10, read directly with `SlideReader`. **Outputs:** contact sheet with mask outlines; for 4 pairs: match and inlier counts (SIFT vs ORB), residual, rigid vs similarity fit (scale), boundary-only result, mirrored-candidate result, overlay and match picture; findings in `docs/REQUIREMENTS.md` section 7. Details in `tasks/IMPLEMENTATION_PLAN.md` section 6.
 - **Depends on:** none (first task of M3). **Files:** `scripts/spike_registration.py`, `docs/REQUIREMENTS.md`.
 - **Acceptance:** owner has reviewed contact sheet, overlays and match pictures; decisions recorded: mirror needed, rigid or similarity, detector, mask method adequate, 32x adequate, initial inlier and residual thresholds.
 - **Tests:** manual review (throwaway script, writes only to the work dir `spike/`).
+- **Result (2026-10-19):** all 9 pairs of slices 1 to 10 (more than the planned 4), plus a guided-matching variant and a 16x/32x/64x comparison on two pairs. Findings and proposed decisions in `docs/REQUIREMENTS.md` section 7 ("Spike results"); decisions are fixed in M3-00.
+- **Owner decisions (2026-10-20):** similarity instead of rigid; guided two-pass ORB matching; coarse-to-fine 64x then 32x; no mirror handling; detached fragments kept as tissue; damaged margins accepted for the MVP (`docs/REQUIREMENTS.md`, confirmed decisions 11 to 15).
 
 ### Component: docs
 

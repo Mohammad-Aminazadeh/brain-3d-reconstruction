@@ -40,3 +40,13 @@ Until now the plan used the tissue mask only as an optional helper and aligned s
 
 - **Edge margin accepted:** a background rim of up to about 50 µm along the tissue edge is acceptable for the MVP, so that tissue is never cut off.
 - **Transparent background:** the background is shown transparent in the viewer, so empty space contrasts with the tissue. To make this unambiguous, background voxels are stored as pure white (255, 255, 255) and tissue voxels that are exactly pure white are stored as 254 (an invisible change). The Neuroglancer shader renders pure white as transparent (task M3-12). This takes effect with the masked, registered volume; in the unregistered M2 volume the glass is not pure white.
+
+## Spike decisions (2026-10-20)
+
+From the real-data spike (M3-06, results in `docs/REQUIREMENTS.md` section 7), the owner decided:
+
+- **Similarity instead of rigid:** rotation, uniform scale and translation. Sections differ in size by up to about 9%; rigid fits leave up to 242 µm of error, similarity 16 to 19 µm.
+- **Guided two-pass ORB matching** as the main method. Global matching alone yields too few reliable matches on this uniform tissue; guided matching yields 62 to 882 inliers per pair. ORB outperformed SIFT on every pair. No mirror handling (no mirrored slices).
+- **Coarse-to-fine:** first pass at 64x, second at 32x.
+- **Detached fragments are tissue:** the mask keeps components above an absolute minimum size, not a percentage of the main tissue, and includes pale tissue connected to stained tissue.
+- **Damaged margins** may stay off by hundreds of µm in the MVP; non-rigid correction is postponed.
