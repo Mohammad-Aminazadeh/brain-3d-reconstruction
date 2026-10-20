@@ -41,10 +41,10 @@ Conventions that apply to every task (not repeated below):
 | M3-06 | **Real-data spike: orientation, tissue masks, feature matching (first M3 task)** | integration | Medium | Done | none |
 | M3-00 | Registration contracts (C1 to C12) | docs | Low | Done (approved 2026-10-20) | M3-06 |
 | M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | To do | M2-04, M3-00 |
-| M3-02 | Synthetic tissue and similarity-transform generator | tests | Medium | To do | M0-05, M3-00 |
+| M3-02 | Synthetic tissue and similarity-transform generator | tests | Medium | Done | M0-05, M3-00 |
 | M3-03 | Registration image and preprocessing stage | preprocess | Medium | To do | M3-01, M3-04 |
 | M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | To do | M3-00 |
-| M3-05 | `Transform2D` (similarity) model | registration | Medium | To do | M3-00 |
+| M3-05 | `Transform2D` (similarity) model | registration | Medium | Done | M3-00 |
 | M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | To do | M3-02, M3-05 (M3-04 soft) |
 | M3-08 | Chain and register a slice range | registration | Low | To do | M3-07, M3-01, M3-03, M3-04 |
 | M3-09 | Volume builder with transforms, tissue only | volume | High | To do | M3-05, M2-05 (M3-04 soft) |
@@ -347,7 +347,7 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: tests
 
-#### M3-02 Synthetic tissue and similarity-transform generator · Medium · To do
+#### M3-02 Synthetic tissue and similarity-transform generator · Medium · Done
 - **Objective:** Ground truth for registration, mask and QC tests.
 - **Outputs:** `tests/synthetic/tissue.py`:
   - `make_tissue(shape, seed)` returns an RGB image and its ground-truth mask: an irregular, pale-stained tissue blob with internal structures that give detectable features (vessel-like curves, blobs of varying size, texture), **one or two detached fragments** (decision 14), and on the glass **debris specks** below 0.2 mm² that must be excluded;
@@ -357,6 +357,10 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Depends on:** M0-05, M3-00. **Files:** `tests/synthetic/tissue.py`, `tests/synthetic/fake_slide.py` (additive).
 - **Acceptance:** deterministic for a seed; applying a transform and its inverse returns the original within interpolation error; ORB finds at least 100 keypoints inside the tissue of a 1000 x 800 image.
 - **Tests:** `tests/unit/test_synthetic.py`.
+- **Result (2026-10-20):** `tests/synthetic/tissue.py` (`make_tissue`, `apply_similarity`, `perturb`) and `FakeSlide.from_image`; 14 tests. Differences from the card:
+  - `perturb(rgb, mask, seed)` takes the mask, so changes stay inside the tissue.
+  - `make_tissue(..., detail_seed)` was added: the same `seed` with a different `detail_seed` gives a **neighbouring section** (same geometry, shared vessels and stain bands, different cells), the realistic case. On it, global ORB matching collapses (3 to 7 inliers, as on the real slides), while the spike's guided matching recovers all 18 tested motions (6 seeds; up to 170° and ±8% scale).
+  - Checked over 10 seeds: always 2 fragments, colours matching the real saturation levels.
 
 ### Component: preprocess
 
@@ -378,12 +382,13 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: registration
 
-#### M3-05 `Transform2D` (similarity) model · Medium · To do
+#### M3-05 `Transform2D` (similarity) model · Medium · Done
 - **Objective:** The transform type every later stage uses (contracts C1 to C3).
 - **Outputs:** `Transform2D` holding a 2x3 matrix in µm (slice → reference), family `similarity` (or `rigid`); `identity()`, `similarity()`, `from_matrix()`, `matrix`, `inverse()`, `compose()`, `apply(points)`, `angle_deg`, `scale`, `to_pixels(src_downsample, dst_downsample, mpp)`, `save()`/`load()` (`brainrec.transform/1`); the pixel↔µm helpers of C1.
 - **Depends on:** M3-00 (conventions C1 to C3). **Files:** `src/brainrec/registration/transform.py`, `docs/ARCHITECTURE.md` (interface).
 - **Acceptance:** level-independent: the same transform gives consistent pixel matrices at 4x, 32x and 64x; `from_matrix` rejects a non-similarity matrix and reflections.
 - **Tests:** `tests/unit/test_transform.py` (identity, inverse round trip, composition order, JSON round trip, pixel conversion at three levels including the half-pixel convention, family validation).
+- **Result (2026-10-20):** `src/brainrec/registration/transform.py`; also `from_pixels()` (inverse of `to_pixels`, for converting OpenCV's pixel-space RANSAC result in M3-07, as C1 requires all conversion in this module). 33 tests in `tests/unit/test_transform.py`, including a 140-transform chain that stays a valid similarity.
 
 #### M3-07 Feature-based pairwise registration (guided ORB, similarity, tissue only) · High · To do
 - **Objective:** Estimate the similarity transform aligning slice k to slice k-1 by detecting features in both images and matching them (F13), using only the tissue (F12), as validated in the spike.
@@ -399,6 +404,7 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
   - (M3-07f, mirrored candidate, dropped: no mirrored slices, decision 12.)
 - **Acceptance:** AC4 passes; an unrelated pair is reported as failed (no silent wrong transform); results identical with and without background debris; about 5 s per pair at 32x on the real data (spike timing).
 - **Tests:** `tests/unit/test_boundary.py`, `tests/unit/test_features.py`, `tests/unit/test_pairwise.py`.
+- **Note from M3-02 (2026-10-20), agreed by the owner:** AC4 (1 px, 0.5°, 0.3%) is specified on *perturbed copies of the same section*, where matching is easy. On realistic *neighbouring sections* (different cells), the spike-quality method reaches 0.5 to 4.4 px, ≤ 0.54° and ≤ 0.92%. M3-07 needs a refinement step for precision. Decision: keep AC4 as specified, and add a robustness test on neighbouring sections with a tolerance taken from the real-data residual (about 17 µm ≈ 2.5 px).
 
 #### M3-08 Chain and register a slice range · Low · To do
 - **Objective:** Pairwise transforms for consecutive slices, composed to the reference slice's frame (C5), as the `register` stage (C7).

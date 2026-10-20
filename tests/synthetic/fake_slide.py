@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from brainrec.slides import LevelInfo
@@ -25,6 +26,29 @@ class FakeSlide:
             self.levels.append(LevelInfo(i, float(ds), img.shape[1], img.shape[0]))
 
     mpp = (0.25, 0.25)
+
+    @classmethod
+    def from_image(
+        cls,
+        rgb: np.ndarray,
+        downsample: float = 1.0,
+        coarser: tuple[int, ...] = (2,),
+        mpp: tuple[float, float] = (0.25, 0.25),
+    ) -> "FakeSlide":
+        """Pyramid whose level at `downsample` is `rgb` itself, plus levels coarser by each factor.
+
+        `mpp` is the level-0 pixel size, so `rgb` has `downsample * mpp` µm per pixel; e.g. a
+        synthetic 32x image of a real slide is `from_image(img, 32, (2,), (0.2205, 0.2205))`.
+        """
+        s = cls.__new__(cls)
+        s.base, s.marker, s.reads, s.mpp = rgb, (0, 0), 0, mpp
+        s.levels, s._imgs = [], []
+        for i, f in enumerate((1, *coarser)):
+            size = (rgb.shape[1] // f, rgb.shape[0] // f)
+            img = rgb if f == 1 else cv2.resize(rgb, size, interpolation=cv2.INTER_AREA)
+            s._imgs.append(img)
+            s.levels.append(LevelInfo(i, float(downsample * f), img.shape[1], img.shape[0]))
+        return s
 
     def level_for_downsample(self, downsample: float) -> int:
         for lv in self.levels:
