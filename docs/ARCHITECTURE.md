@@ -22,8 +22,8 @@ Principles:
 |---|---|---|---|---|
 | `slides` | Open NDPI, expose metadata, return regions at a pyramid level | NDPI path | Metadata, numpy arrays | OpenSlide / tifffile |
 | `catalog` | Discover files, parse `N_H`, validate completeness and order, hold project config | Data folder, config | Ordered slice list | `slides` |
-| `preprocess` | Create the low-res registration image and the **tissue mask** per slice; the mask defines what counts as tissue for every later stage (debris, labels and bubbles removed) | `SlideReader` | `reg/{id}.tif`, `reg/{id}.json`, `mask/{id}.png` | `slides`, `store` |
-| `registration` | Per consecutive pair: boundary-based initial alignment from the masks, keypoint detection inside the masks, feature matching and robust (RANSAC) transform fit, boundary fallback; chain to the reference slice. Drift correction post-MVP | Reg images, masks | `transforms/pair_{id}.json`, `transforms/chained_{id}.json` (transform + match quality) | OpenCV, `store` |
+| `preprocess` | Create the **tissue mask** (from colour saturation) and then the registration image per slice; the mask defines what counts as tissue for every later stage (debris removed, detached fragments kept) | `SlideReader` | `reg/{id}.tif`, `reg/{id}.json`, `mask/{id}.png` | `slides`, `store` |
+| `registration` | Per consecutive pair: boundary-based initial alignment from the masks, ORB keypoints inside the masks, guided matching and robust (RANSAC) similarity fit, coarse-to-fine, boundary fallback; chain to the reference slice. Drift correction post-MVP | Reg images, masks | `transforms/pair_{id}.json`, `transforms/chained_{id}.json` (transform + match quality) | OpenCV, `store` |
 | `qc` | Quality metrics inside the tissue only (feature inliers and residual, masked correlation, mask overlap), overlays with tissue outlines, flagging. Manual overrides post-MVP | Reg images, masks, transforms | `qc/report.json`, overlay images | `registration` |
 | `volume` | Resample slices through transforms tile by tile into the pyramid, **tissue only**: masks applied, background removed, canvas limited to the tissue | Slides, transforms, masks, voxel size | `volume.zarr` | `slides`, `registration`, zarr |
 | `serve` | Serve volume chunks over HTTP (later: on-demand native-resolution tiles) | `volume.zarr` | HTTP responses | FastAPI, `volume` |
@@ -94,7 +94,7 @@ Rules: dependencies point downward only (no cycles); stages never import each ot
 
 ## 5. Interface definitions
 
-Python signatures (type-annotated, shown as pseudocode). These are the contracts; they are not implemented yet.
+Python signatures (type-annotated, shown as pseudocode). These are the contracts. Entries marked "implemented" exist; the M3/M4 entries were fixed in task M3-00 (2026-10-20) together with the cross-cutting contracts in section 5.1.
 
 ```
 # slides
@@ -114,26 +114,34 @@ class ProjectConfig:                   # data_dir, work_dir, z_spacing_um, base_
     @classmethod load(path: Path) -> ProjectConfig
 # Voxel size is not on Catalog (as first drafted): x/y come from the slides' mpp, z from ProjectConfig.
 
-# --- M3/M4 entries below are proposed; exact contracts are fixed in task M3-00 ---
+# preprocess                         # M3 (contracts C1, C4, C9)
+make_mask(rgb: ndarray, um_per_px: float, cfg: ProjectConfig) -> ndarray
+    # uint8 {0,255}; defines "tissue" (F12): saturation threshold with hysteresis, fragments kept
+make_reg_image(rgb: ndarray, mask: ndarray) -> ndarray
+    # uint8: 255 - luminance, CLAHE, 0 outside the mask
+preprocess_slice(slice: SliceRef, work: WorkDir, cfg: ProjectConfig,
+                 reader_factory=SlideReader.open) -> RegImage
+    # one read of the 32x level; writes reg/{id}.png, reg/{id}.json, mask/{id}.png
 
-# preprocess                         # M3
-make_reg_image(slice: SliceRef, work: WorkDir, reader_factory=SlideReader.open, downsample=32) -> Path
-make_mask(reg_image: Path, work: WorkDir) -> Path   # mandatory (F12): uint8 {0,255}, same shape; defines "tissue"
-
-# registration                       # M3, feature-based (F13), tissue only (F12)
-RegImage                             # registration image + mask + metadata (downsample, mpp), loaded from the work dir
-initial_from_masks(fixed: RegImage, moving: RegImage) -> Rigid2D     # boundary-based: centroid + principal axes
-detect_features(img: RegImage) -> Features                           # SIFT keypoints + descriptors inside the mask only
-match_and_fit(fixed: Features, moving: Features, init: Rigid2D) -> PairResult   # ratio test + RANSAC
-register_pair(fixed: RegImage, moving: RegImage) -> PairResult
-    # PairResult: transform (moving -> fixed, µm), method ("features" | "boundary"), n_matches, n_inliers, rms_um
-chain(pairs: dict[int, Rigid2D]) -> dict[int, Rigid2D]   # slice -> reference (first slice of the range)
-Rigid2D: matrix(), inverse(), compose(), apply(points), to_pixels(downsample, mpp), save(), load()
+# registration                       # M3, feature-based (F13), tissue only (F12), similarity (C2, C3)
+RegImage(slice_id, image, mask, downsample, mpp_um)    # .load(work, id); .coarse() = 2x area-downsampled copy (64x)
+Transform2D                          # see C2: similarity, slice -> reference, µm
+initial_from_masks(fixed: RegImage, moving: RegImage) -> Transform2D   # centroid + principal axes, 2 candidates
+detect_features(img: RegImage, cfg) -> Features        # ORB keypoints + descriptors inside the mask only
+guided_match(fixed: Features, moving: Features, predict: Transform2D, window_um: float, cfg) -> Matches
+fit_similarity(matches: Matches, cfg) -> FitResult     # RANSAC; transform, inliers, rms_um
+register_pair(fixed: RegImage, moving: RegImage, cfg) -> PairResult
+    # boundary estimate -> pass 1 at 64x (window 2.5 mm) -> pass 2 at 32x (window 0.3 mm);
+    # boundary fallback and failure rules per C12
+    # PairResult: transform (moving -> fixed), status ("features" | "boundary" | "failed"),
+    #             n_matches, n_inliers, rms_um, mask_iou
+chain(pairs: dict[int, Transform2D], reference: int) -> dict[int, Transform2D]   # slice -> reference
+run_register(catalog, work, cfg, manifest, overwrite=False) -> StageResult       # stage shape C7
 correct_drift(...)                                       # post-MVP
 
 # qc                                 # M4, inside the tissue only
 score_pair(fixed: RegImage, moving: RegImage, result: PairResult) -> PairScore   # inliers, rms_um, masked NCC, mask Dice
-render_overlay(fixed: RegImage, moving: RegImage, t: Rigid2D, out: Path) -> Path # green/magenta + tissue outlines
+render_overlay(fixed: RegImage, moving: RegImage, t: Transform2D, out: Path) -> Path  # green/magenta + tissue outlines
 apply_override(...)                                      # post-MVP
 
 # store                              # implemented (M2)
@@ -144,8 +152,8 @@ Manifest(path).get(key), .set(key, value)   # JSON, atomic write
 VolumeSpec(z_spacing_um, base_downsample=4, n_levels=5, chunk_xy=512, shard_xy=4096)
 build_volume(catalog, out: Path, spec: VolumeSpec, manifest: Manifest | None = None,
              reader_factory=SlideReader.open, overwrite: bool = False) -> Path
-    # M3 adds (proposed, fixed in M3-00):
-    #   transforms: dict[int, Rigid2D] | None = None   (by slice id; None = slices centred, as in M2)
+    # M3 adds (contract C8):
+    #   transforms: dict[int, Transform2D] | None = None   (slice -> reference; None = slices centred, as in M2)
     #   masks: dict[int, Path] | None = None           (tissue only, F12: voxels outside the warped mask
     #                                                    + margin = fill value 255; canvas = bounding box of
     #                                                    the transformed tissue, not of the scanned area;
@@ -163,10 +171,104 @@ GET /tile/{z}/{level}/{x}/{y}          # post-MVP, native-resolution tile
 # pipeline (CLI)
 brainrec --config C volume --slices A-B [--overwrite]   # interim (M2)
 brainrec --config C serve [--port 8000]                # interim (M2); viewer on port+1
+brainrec --config C preprocess --slices A-B             # interim (M3-10)
+brainrec --config C register --slices A-B               # interim (M3-10)
 brainrec run [--stage S] [--slices A-B]                # M5
 brainrec status                                        # M5
 brainrec qc                                            # M4
 ```
+
+### 5.1 Cross-cutting contracts (fixed in M3-00, 2026-10-20)
+
+Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.md). Evidence: the real-data spike (`docs/REQUIREMENTS.md` section 7) and owner decisions 9 to 15.
+
+**C1 Coordinates.**
+- Each slice has its own frame in **micrometres**. The origin is the top-left **corner** of level-0 pixel (0, 0); x points right, y points down.
+- Pixel coordinates follow OpenCV: integer (x, y) is the **centre** of column x, row y.
+- A level with downsample d maps to µm as X = (x + 0.5)·d·mpp_x and Y = (y + 0.5)·d·mpp_y.
+- All pixel↔µm conversion goes through one helper in `registration/transform.py`.
+- *Why:* mixing corner and centre conventions between 32x and 4x would shift slices by about 3.5 base pixels.
+
+**C2 Transform.**
+- `Transform2D` holds a 2x3 matrix A in µm mapping the **slice frame → reference frame**: p' = A·[p, 1].
+- Family `similarity`: A = [[s·cosθ, −s·sinθ, tx], [s·sinθ, s·cosθ, ty]], with s > 0. θ is in radians in y-down coordinates (positive = clockwise on screen). `rigid` is the special case s = 1.
+- **Operations:**
+  - `identity()`, `similarity(angle_rad, scale, tx_um, ty_um)`, `from_matrix(A, family)`, which validates the family;
+  - `matrix`, `inverse()`, and `a.compose(b)` = a∘b (b applied first);
+  - `apply(points_um)`, `angle_deg`, `scale`;
+  - `to_pixels(src_downsample, dst_downsample, mpp)`, giving the 3x3 matrix from source-level pixels to destination-level pixels.
+- **File format:** `save()`/`load()` use JSON `{"schema": "brainrec.transform/1", "family": "similarity", "matrix_um": [[...], [...]]}`.
+- `register_pair(fixed, moving)` returns the transform **moving → fixed**. OpenCV's RANSAC result maps moving keypoints onto fixed keypoints in pixels and is converted with C1.
+- **Chain:** T(k → ref) = T(ref+1 → ref) ∘ … ∘ T(k → k−1).
+
+**C3 Transform family.**
+- **Similarity** (rotation, uniform scale, translation), owner decision 11.
+- No reflection: no mirrored slices were found (decision 12).
+- Affine and non-rigid come after the MVP. The `family` field lets them be added without changing the file format.
+- *Known limit:* scale errors can accumulate along the chain; drift correction is post-MVP.
+
+**C4 Preprocessing files.**
+- **Read:** one read of the 32x level per slice (`reg_downsample`).
+- **`mask/{id}.png`:** uint8 {0, 255}, 255 = tissue. Rule:
+  1. Otsu on blurred HSV saturation, with hysteresis: pixels at ≥ `mask_hysteresis` × threshold count as tissue if they connect to pixels at or above the threshold. This keeps pale tissue.
+  2. Close (about 100 µm), then open (about 35 µm), then fill holes.
+  3. Keep **every** component of at least `mask_min_component_mm2`, so detached fragments are kept (decision 14); debris specks are smaller than 0.2 mm².
+- **`reg/{id}.png`:** uint8, 255 minus luminance, CLAHE (clip 2.0, 8x8 tiles), 0 outside the mask. The 64x image for pass 1 is derived in memory by 2x area downsampling and not stored.
+- **`reg/{id}.json`:** `{"schema": "brainrec.regimage/1", "slice_id", "source", "downsample", "mpp_um": [x, y], "width", "height"}`.
+- PNG, not TIFF: lossless and written by OpenCV, with no extra dependency in this path.
+
+**C5 Pairs and reference.**
+- A pair is keyed by its moving slice k; fixed = the previous slice in catalog order.
+- `transforms/pair_{k}.json` holds the `PairResult` (k → k−1).
+- `transforms/chained_{k}.json` holds the transform k → reference.
+- Reference = the first slice of the run range. It is part of the manifest signature.
+
+**C6 Manifest.**
+- Keys `preprocess`, `register`, `qc`, `volume`, each `{signature, done: [ids]}`.
+- A signature contains the stage's parameters, its id list and a hash of the upstream stage's signature. Changed inputs therefore invalidate downstream work; they are never silently reused.
+
+**C7 Stage shape.**
+- `run_<stage>(catalog, work: WorkDir, cfg: ProjectConfig, manifest: Manifest, reader_factory=SlideReader.open, overwrite=False) -> StageResult(done, skipped)`.
+- Idempotent per item; raises on error.
+
+**C8 Volume inputs.**
+- `build_volume(..., transforms: dict[int, Transform2D] | None, masks: dict[int, Path] | None)`, keyed by slice id. `None` means M2 mode.
+- Volume attributes add `reference_slice`, `canvas_origin_um`, `mask_margin_um`, and a per-slice hash of transform and mask.
+
+**C9 Configuration** (flat fields with defaults, so existing configs keep working):
+
+| Field | Default | Source |
+|---|---|---|
+| `reg_downsample` | 32 | spike |
+| `reg_coarse_factor` | 2 (pass 1 at 64x) | decision 13 |
+| `reg_detector` | `"orb"` | decision 12 |
+| `reg_max_features` | 50000 | spike |
+| `reg_ratio_test` | 0.8 | spike |
+| `reg_window_um` | [2500, 300] | spike (passes 1 and 2) |
+| `reg_ransac_px` | 4.0 | spike |
+| `reg_min_inliers` | 40 | spike: lowest good pair had 62 |
+| `reg_max_rms_um` | 25.0 | spike: 16 to 19 µm observed |
+| `boundary_min_iou` | 0.80 | spike: 0.83 to 0.98 observed |
+| `mask_hysteresis` | 0.75 | to be validated in M3-04 |
+| `mask_min_component_mm2` | 0.25 | spike: fragments 0.6 to 2.8 mm², specks below 0.2 |
+| `volume_mask_margin_um` | 50 | decision 9 |
+| `qc_min_dice` | 0.90 | spike: flags the damaged pairs 3→4, 4→5, 5→6 |
+| `qc_min_ncc` | none until M4-05 | calibrated on real data |
+
+**C10 QC report.** `qc/report.json`: `{"schema": "brainrec.qc/1", "thresholds", "pairs": [{"fixed", "moving", "status", "n_inliers", "rms_um", "ncc", "dice", "flagged", "overlay"}]}`.
+
+**C11 Tissue-only volume.**
+- A voxel is tissue if it lies inside its slice's mask, warped by the slice's transform and enlarged by `volume_mask_margin_um`.
+- All other voxels are exactly (255, 255, 255), the fill value, so all-background chunks are not stored.
+- Tissue voxels that are exactly pure white are stored as 254.
+- The canvas is the bounding box of all warped, enlarged masks, aligned to the pyramid grid.
+- The viewer shows pure white as transparent (decision 10).
+
+**C12 Acceptance and failure rules per pair.**
+- **`features`:** pass-2 inliers ≥ `reg_min_inliers` and rms ≤ `reg_max_rms_um`.
+- **`boundary`:** otherwise, outline alignment (iterative closest point on the two tissue outlines, similarity, starting from the boundary estimate) is used if its mask IoU ≥ `boundary_min_iou`.
+- **`failed`:** neither passes. `register` stops at the failed pair and reports it; no chained transform is written past it. A wrong transform is never accepted silently.
+- QC separately flags pairs whose mask Dice is below `qc_min_dice`.
 
 ## 6. Technology decisions
 
@@ -176,7 +278,7 @@ brainrec qc                                            # M4
 | NDPI reading | OpenSlide (`openslide-python` + `openslide-bin`), tifffile as fallback | Lazy tile access to NDPI; `openslide-bin` bundles the native library in the venv | |
 | Storage | OME-Zarr 0.5 on Zarr v3, sharded (512 px chunks in 4096 px shards), zstd lossless | Chunked, multi-resolution, resumable; shards keep the file count low on the exFAT drive (512 KB blocks, a `._` file per file) | Lossless only: Neuroglancer's Zarr reader has no JPEG codec (see docs/decisions/0001) |
 | Image ops | numpy, scikit-image, OpenCV | Standard and fast | |
-| Registration | OpenCV: SIFT features inside the tissue masks, ratio-test matching, RANSAC fit (`estimateAffinePartial2D` or a rigid fit on the inliers); tissue-boundary initialisation and fallback from the masks. SimpleITK only for an optional intensity refinement | Owner requirement (F13); feature matching is rotation-invariant (no angle sweep) and robust to outliers; OpenCV is already a dependency | Consecutive sections do not share the same cells, so matches must come from larger structures at about 7 µm/px; feature-poor pairs fall back to boundary alignment |
+| Registration | OpenCV: ORB features inside the tissue masks, guided two-pass matching (windows around the boundary estimate, then around the first fit), RANSAC similarity fit (`estimateAffinePartial2D`); coarse-to-fine 64x then 32x; tissue-boundary initialisation and fallback. SimpleITK only for an optional intensity refinement | Owner requirement (F13); feature matching is rotation-invariant (no angle sweep) and robust to outliers; OpenCV is already a dependency | Consecutive sections do not share the same cells, so matches must come from larger structures at about 7 µm/px; feature-poor pairs fall back to boundary alignment |
 | Parallelism | `concurrent.futures`; Dask only if needed | Simplicity | |
 | Server | FastAPI + uvicorn | Lightweight, testable | |
 | Viewer | Neuroglancer (MVP), served locally by the `neuroglancer` Python package | Solves 3D streaming and orthogonal views, saving weeks; local serving avoids a public page reading from localhost | Less control over UX; replaceable, isolated to `serve/` |

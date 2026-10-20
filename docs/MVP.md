@@ -13,8 +13,8 @@ Prove the whole chain on real data at reduced resolution: **10 consecutive NDPI 
 | `slides` | Read NDPI metadata and pyramid levels; read regions at a level chosen by downsample factor (OpenSlide). |
 | `catalog` | Scan the data folder, order by `N_H`, check gaps and duplicates, select a slice range; YAML project config. |
 | `store` | Work-directory layout and a JSON manifest for resuming. |
-| `preprocess` | One low-resolution grayscale registration image per slice (about 7 µm/px, 32x) and a **tissue mask** that defines what counts as tissue for all later stages (debris and labels removed). |
-| `registration` | **Feature-based, tissue only (F12, F13):** boundary-based initial alignment from the masks; SIFT features inside the tissue matched between neighbours; robust (RANSAC) fit of a rigid transform (rotation and translation); boundary alignment as fallback; chained to slice 1. Transforms and match quality saved as small JSON files. |
+| `preprocess` | A **tissue mask** per slice (from colour saturation; debris removed, detached fragments kept) that defines what counts as tissue for all later stages, and a grayscale registration image (about 7 µm/px, 32x). |
+| `registration` | **Feature-based, tissue only (F12, F13):** boundary-based initial alignment from the masks; ORB features inside the tissue, matched between neighbours with guided two-pass matching, coarse-to-fine (64x, then 32x); robust (RANSAC) fit of a **similarity** transform (rotation, uniform scale, translation); boundary alignment as fallback; chained to slice 1. Transforms and match quality saved as small JSON files. |
 | `qc` | Per pair, inside the tissue only: feature inliers and residual, masked correlation, mask overlap; an overlay with tissue outlines; flagging below a threshold. No manual override. |
 | `volume` | Resample slices through their transforms into an OME-Zarr 0.5 pyramid (base 4x = 0.88 µm/px, 5 levels, sharded, lossless), **tissue only**: background outside the masks removed, volume limited to the tissue extent. |
 | `serve` | Static, CORS-enabled hosting of the work directory; local Neuroglancer viewer link. |
@@ -32,8 +32,8 @@ All 140 slices; non-rigid registration; global drift correction; manual override
 brainrec --config config/project.yaml run --slices 1-10
   catalog    -> ordered list of 10 slices
   preprocess -> reg image + tissue mask per slice (32x)
-  register   -> per consecutive pair: boundary alignment, features inside the tissue,
-                matching + RANSAC rigid fit; chained to slice 1
+  register   -> per consecutive pair: boundary alignment, ORB features inside the tissue,
+                guided matching (64x, then 32x) + RANSAC similarity fit; chained to slice 1
   qc         -> score (inside tissue) + overlay with tissue outlines per pair, flags
   volume     -> volume.zarr (OME-Zarr 0.5, 4x base, 5 levels), tissue only
 brainrec --config config/project.yaml serve   -> local Neuroglancer link, open in Chrome
@@ -63,7 +63,7 @@ The MVP is accepted when all hold, each checked by a command or test that was ac
 | AC1 | `brainrec run --slices 1-10` completes on the real data from a clean work directory; a second run skips finished work. | Run log; second run reads no slice pixels |
 | AC2 | Source NDPI files are unchanged. | Fingerprint (size, mtime, SHA-256) before and after |
 | AC3 | All outputs are inside `/Volumes/My Passport/3D Brain Reconstruction/`; total size reported. | `du`, listing |
-| AC4 | On synthetic data with known shifts and rotations (including about 45° and 170°), the feature-based registration recovers them within 1 px (at registration resolution) and 0.5°, using only features inside the tissue: synthetic debris on the background does not change the result. | pytest |
+| AC4 | On synthetic data with known shifts, rotations (including about 45° and 170°) and uniform scale changes (up to ±10%), the feature-based registration recovers them within 1 px (at registration resolution), 0.5° and 0.3% scale, using only features inside the tissue: synthetic debris on the background does not change the result. | pytest |
 | AC5 | On real slices 1 to 10, each consecutive overlay shows matching tissue outlines and internal structures (judged by the project owner); every pair has a score computed inside the tissue, and pairs below the threshold are flagged. | QC report + review |
 | AC6 | The volume opens in Neuroglancer in Chrome, with orthogonal and 3D views; zooming loads finer levels without errors. | Project owner, in the browser |
 | AC7 | At the base level (0.88 µm/px), tissue structure is visible down to cell scale; the achievable resolution is stated plainly. | Project owner, in the browser |

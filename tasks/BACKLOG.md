@@ -39,13 +39,13 @@ Conventions that apply to every task (not repeated below):
 | M2-10 | Visual check in Neuroglancer | integration | Low | Done | M2-09 |
 | M2-11 | Close M2 test gaps (config, CLI) | tests | Low | To do | M2-08 |
 | M3-06 | **Real-data spike: orientation, tissue masks, feature matching (first M3 task)** | integration | Medium | Done | none |
-| M3-00 | Registration contracts (C1 to C12) | docs | Low | To do | M3-06 |
+| M3-00 | Registration contracts (C1 to C12) | docs | Low | Done (approved 2026-10-20) | M3-06 |
 | M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | To do | M2-04, M3-00 |
-| M3-02 | Synthetic tissue and rigid-transform generator | tests | Medium | To do | M0-05, M3-00 |
-| M3-03 | Registration image | preprocess | Medium | To do | M3-01 |
-| M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | To do | M3-03 |
-| M3-05 | `Rigid2D` transform model | registration | Medium | To do | M3-00 |
-| M3-07 | Feature-based pairwise registration (tissue only) | registration | High | To do | M3-02, M3-05 (M3-04 soft) |
+| M3-02 | Synthetic tissue and similarity-transform generator | tests | Medium | To do | M0-05, M3-00 |
+| M3-03 | Registration image and preprocessing stage | preprocess | Medium | To do | M3-01, M3-04 |
+| M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | To do | M3-00 |
+| M3-05 | `Transform2D` (similarity) model | registration | Medium | To do | M3-00 |
+| M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | To do | M3-02, M3-05 (M3-04 soft) |
 | M3-08 | Chain and register a slice range | registration | Low | To do | M3-07, M3-01, M3-03, M3-04 |
 | M3-09 | Volume builder with transforms, tissue only | volume | High | To do | M3-05, M2-05 (M3-04 soft) |
 | M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | To do | M3-08, M3-09, M2-11 |
@@ -73,7 +73,7 @@ Conventions that apply to every task (not repeated below):
 
 **Independent (order is free; each can be picked up whenever its listed dependency is done):**
 - Any time: M0-06 (CI), M1-02 (header survey), M2-11 (test gaps), M5-03 (disk preflight), M5-04 (source fingerprint).
-- After M3-00: M3-01 (layout), M3-02 (synthetic generator) and M3-05 (transform model) do not depend on each other; M3-03 → M3-04 can follow M3-01 independently of M3-07.
+- After M3-00: M3-01 (layout), M3-02 (synthetic generator) and M3-05 (transform model) do not depend on each other; M3-04 (mask) → M3-03 (registration image) can follow independently of M3-07.
 - After M3-05: M3-09 (volume with transforms), M4-01 and M4-02 (QC score and overlay) can be built and tested on synthetic data while M3-07 is in progress.
 - M3-12 (transparent background) needs only M3-09.
 
@@ -86,7 +86,8 @@ flowchart TD
     M3-06 --> M3-00
     M3-00 --> M3-01 & M3-02 & M3-05
     M2-04 --> M3-01
-    M3-01 --> M3-03 --> M3-04
+    M3-00 --> M3-04 --> M3-03
+    M3-01 --> M3-03
     M0-05 --> M3-02
     M3-02 --> M3-07
     M3-05 --> M3-07
@@ -308,11 +309,11 @@ Goal: data path and viewer proven with the least code: 10 slices stacked as they
 
 ## M3 Registration
 
-Goal: rigid slice-to-slice alignment, proven on synthetic data (AC4), then applied to slices 1 to 10. Transforms are expressed in **micrometres in each slice's level-0 frame**, so they apply unchanged at every pyramid level.
+Goal: slice-to-slice alignment with a **similarity** transform (rotation, uniform scale, translation), proven on synthetic data (AC4), then applied to slices 1 to 10. All tasks follow the contracts C1 to C12 in `docs/ARCHITECTURE.md` section 5.1. Transforms are expressed in **micrometres in each slice's level-0 frame**, so they apply unchanged at every pyramid level.
 
 Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-feature-based-registration.md`):
 - **Tissue only (F12):** the tissue mask defines what is processed. Registration and QC work inside the masks; the volume stores only tissue and is limited to the tissue extent.
-- **Feature-based (F13):** boundary-based initial alignment from the masks, SIFT features inside the tissue matched between neighbours, RANSAC fit, boundary fallback.
+- **Feature-based (F13):** boundary-based initial alignment from the masks, ORB features inside the tissue, guided two-pass matching (64x, then 32x), RANSAC similarity fit, boundary fallback (spike decisions, 2026-10-20).
 
 ### Component: integration (first)
 
@@ -327,12 +328,13 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: docs
 
-#### M3-00 Registration contracts · Low · To do
+#### M3-00 Registration contracts · Low · Done (approved 2026-10-20)
 - **Objective:** Fix the cross-cutting contracts C1 to C12 (`tasks/IMPLEMENTATION_PLAN.md` section 5) with the spike's facts, before any M3 library code.
 - **Inputs:** spike findings (M3-06). **Outputs:** `docs/ARCHITECTURE.md` section 5 (proposed M3/M4 entries become contracts: coordinates, transform direction and family, file formats, manifest schema, stage shape, config fields, tissue-only semantics, failure rules); spike decisions recorded in `docs/decisions/0003-tissue-only-feature-based-registration.md`.
 - **Depends on:** M3-06. **Files:** `docs/ARCHITECTURE.md`, `docs/decisions/0003-tissue-only-feature-based-registration.md`, `tasks/IMPLEMENTATION_PLAN.md`.
 - **Acceptance:** owner approves; every M3 and M4 task card refers only to defined contracts.
 - **Tests:** none (documentation); review.
+- **Result (2026-10-20):** contracts C1 to C12 in `docs/ARCHITECTURE.md` section 5.1; M3/M4 interfaces in section 5 updated (`Transform2D` similarity, `preprocess_slice`, guided matching, failure rules); task cards M3-02 to M3-09 aligned; mask before registration image (the registration image is blanked outside the mask).
 
 ### Component: store
 
@@ -345,60 +347,64 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: tests
 
-#### M3-02 Synthetic tissue and rigid-transform generator · Medium · To do
-- **Objective:** Ground truth for registration and QC tests.
-- **Outputs:** `tests/synthetic/tissue.py`: `make_tissue(shape, seed)` returning an image and its ground-truth mask: an irregular tissue blob with internal structures that give detectable features (vessel-like curves, blobs of varying size, texture, dark "cells"), on a glass-like background with **debris outside the tissue** (small specks, a label-like rectangle) to test that only tissue is used; `apply_rigid(img, mask, angle_deg, tx, ty)` returning the moved image, moved mask and true parameters; `perturb(img, seed)` for section-to-section differences (noise, slight intensity change, a few structures added or removed); a `FakeSlide` variant built from a given image.
+#### M3-02 Synthetic tissue and similarity-transform generator · Medium · To do
+- **Objective:** Ground truth for registration, mask and QC tests.
+- **Outputs:** `tests/synthetic/tissue.py`:
+  - `make_tissue(shape, seed)` returns an RGB image and its ground-truth mask: an irregular, pale-stained tissue blob with internal structures that give detectable features (vessel-like curves, blobs of varying size, texture), **one or two detached fragments** (decision 14), and on the glass **debris specks** below 0.2 mm² that must be excluded;
+  - `apply_similarity(img, mask, angle_deg, scale, tx, ty)` returns the moved image, moved mask and true `Transform2D`;
+  - `perturb(img, seed)` adds section-to-section differences (noise, slight intensity change, a few structures added or removed, a fold-like streak);
+  - a `FakeSlide` variant built from a given image.
 - **Depends on:** M0-05, M3-00. **Files:** `tests/synthetic/tissue.py`, `tests/synthetic/fake_slide.py` (additive).
-- **Acceptance:** deterministic for a seed; applying a transform and its inverse returns the original within interpolation error; SIFT finds at least 100 keypoints inside the tissue of a 1000 x 800 image.
+- **Acceptance:** deterministic for a seed; applying a transform and its inverse returns the original within interpolation error; ORB finds at least 100 keypoints inside the tissue of a 1000 x 800 image.
 - **Tests:** `tests/unit/test_synthetic.py`.
 
 ### Component: preprocess
 
-#### M3-03 Registration image · Medium · To do
-- **Objective:** One small grayscale image per slice for registration.
-- **Inputs:** `SliceRef`, reader factory, downsample (32, about 7 µm/px). **Outputs:** `reg/{id}.tif` (uint8, tissue bright on dark background: 255 minus luminance) and `reg/{id}.json` (downsample, µm/px, size).
-- **Depends on:** M3-01. **Files:** `src/brainrec/preprocess/regimage.py`; `src/brainrec/slides/` (receives the `SliceSource` protocol, moved from `volume`; `volume` re-exports it).
-- **Subtasks:** M3-03a move `SliceSource` to `slides` (interface location change, no behaviour change); M3-03b `make_reg_image()`.
-- **Acceptance:** reads one whole coarse level (no level-0 access); output size equals the level size; metadata correct.
-- **Tests:** `tests/unit/test_preprocess.py` with `FakeSlide` (size, inversion, metadata, reads only the requested level).
+#### M3-03 Registration image and preprocessing stage · Medium · To do
+- **Objective:** One read of the 32x level per slice produces the mask and the registration image (contract C4).
+- **Inputs:** `SliceRef`, reader factory, `ProjectConfig`. **Outputs:** `make_reg_image(rgb, mask)` (255 minus luminance, CLAHE, 0 outside the mask); `preprocess_slice(...)` writing `reg/{id}.png`, `reg/{id}.json` and `mask/{id}.png`; `run_preprocess(...)` in the stage shape C7 with manifest resume.
+- **Depends on:** M3-01, M3-04 (the registration image is blanked outside the mask). **Files:** `src/brainrec/preprocess/regimage.py`, `src/brainrec/preprocess/stage.py`; `src/brainrec/slides/` (receives the `SliceSource` protocol, moved from `volume`; `volume` re-exports it).
+- **Subtasks:** M3-03a move `SliceSource` to `slides` (interface location change, no behaviour change); M3-03b `make_reg_image()`; M3-03c `preprocess_slice()` and `run_preprocess()`.
+- **Acceptance:** reads one whole 32x level (no level-0 access); output sizes equal the level size; metadata per C4; zero outside the mask; second run skips done slices.
+- **Tests:** `tests/unit/test_preprocess.py` with `FakeSlide` (size, inversion, zero background, metadata, reads only the requested level, resume).
 
 #### M3-04 Tissue mask · Medium · To do
 - **Objective:** Define what counts as tissue for every later stage (F12): registration, QC and the volume ignore everything outside the mask.
-- **Inputs:** registration image. **Outputs:** `mask/{id}.png` (uint8 {0, 255}, same shape as the registration image).
-- **Method:** Otsu threshold, morphological close and open, fill holes (tissue with internal holes stays one region), drop components below 1% of tissue area (debris, dust, label remnants).
-- **Depends on:** M3-03. **Files:** `src/brainrec/preprocess/mask.py`.
-- **Acceptance:** Dice at least 0.95 against the synthetic ground-truth mask; synthetic debris and the label rectangle are excluded; tissue recall at least 0.99 (cutting tissue is worse than keeping a little glass).
-- **Tests:** `tests/unit/test_mask.py` (Dice, debris removed, holes filled, recall).
+- **Inputs:** RGB image at 32x and its µm per pixel. **Outputs:** `make_mask(rgb, um_per_px, cfg)`: uint8 {0, 255}, same shape (contract C4).
+- **Method:** Otsu on blurred HSV saturation with hysteresis (`mask_hysteresis`, pale tissue connected to stained tissue is kept), close about 100 µm, open about 35 µm, fill holes, keep **every** component of at least `mask_min_component_mm2` (detached fragments kept, decision 14; debris specks dropped).
+- **Depends on:** M3-00. **Files:** `src/brainrec/preprocess/mask.py`, `src/brainrec/catalog/config.py` (mask fields of C9).
+- **Acceptance:** on synthetic data: Dice at least 0.95, tissue recall at least 0.99, fragments kept, specks excluded, holes filled. On real slices 1 to 10 (contact sheet, owner check): the pale fragments at the left of slices 6 to 10 are inside the mask; scan-edge streaks are not.
+- **Tests:** `tests/unit/test_mask.py` (Dice, recall, fragments kept, specks dropped, holes filled, hysteresis keeps a pale region attached to stained tissue but not an isolated pale patch).
 
 ### Component: registration
 
-#### M3-05 `Rigid2D` transform model · Medium · To do
-- **Objective:** The transform type every later stage uses.
-- **Outputs:** `Rigid2D(angle_rad, tx_um, ty_um, cx_um, cy_um)` mapping slice coordinates to reference coordinates; `matrix()`, `inverse()`, `compose()`, `apply(points)`, `to_pixels(downsample, mpp)` (3x3 matrix at a pyramid level), `save()`/`load()` (JSON with schema version).
+#### M3-05 `Transform2D` (similarity) model · Medium · To do
+- **Objective:** The transform type every later stage uses (contracts C1 to C3).
+- **Outputs:** `Transform2D` holding a 2x3 matrix in µm (slice → reference), family `similarity` (or `rigid`); `identity()`, `similarity()`, `from_matrix()`, `matrix`, `inverse()`, `compose()`, `apply(points)`, `angle_deg`, `scale`, `to_pixels(src_downsample, dst_downsample, mpp)`, `save()`/`load()` (`brainrec.transform/1`); the pixel↔µm helpers of C1.
 - **Depends on:** M3-00 (conventions C1 to C3). **Files:** `src/brainrec/registration/transform.py`, `docs/ARCHITECTURE.md` (interface).
-- **Acceptance:** level-independent: the same transform gives consistent pixel matrices at 4x and 32x.
-- **Tests:** `tests/unit/test_transform.py` (identity, inverse round trip, composition order, JSON round trip, pixel conversion at two levels).
+- **Acceptance:** level-independent: the same transform gives consistent pixel matrices at 4x, 32x and 64x; `from_matrix` rejects a non-similarity matrix and reflections.
+- **Tests:** `tests/unit/test_transform.py` (identity, inverse round trip, composition order, JSON round trip, pixel conversion at three levels including the half-pixel convention, family validation).
 
-#### M3-07 Feature-based pairwise registration (tissue only) · High · To do
-- **Objective:** Estimate the transform aligning slice k to slice k-1 by detecting features in both images and matching them (F13), using only the tissue (F12).
-- **Inputs:** two registration images with masks and metadata. **Outputs:** `PairResult`: `Rigid2D` (moving → fixed, µm), method used (`features` or `boundary`), number of matches and inliers, residual (µm).
-- **Depends on:** M3-02, M3-05; M3-04 soft (tests use synthetic ground-truth masks; the mask file contract C4 comes from M3-00). **Files:** `src/brainrec/registration/{features,boundary,pairwise}.py`.
+#### M3-07 Feature-based pairwise registration (guided ORB, similarity, tissue only) · High · To do
+- **Objective:** Estimate the similarity transform aligning slice k to slice k-1 by detecting features in both images and matching them (F13), using only the tissue (F12), as validated in the spike.
+- **Inputs:** two `RegImage`s (image, mask, metadata). **Outputs:** `PairResult` (contract C2/C12): `Transform2D` (moving → fixed, µm), status (`features`, `boundary` or `failed`), matches, inliers, residual (µm), mask IoU.
+- **Depends on:** M3-02, M3-05; M3-04 soft (tests use synthetic ground-truth masks; the mask contract C4 is fixed). **Files:** `src/brainrec/registration/{boundary,features,pairwise}.py`, `src/brainrec/catalog/config.py` (registration fields of C9).
 - **Subtasks:**
-  - M3-07a **Boundary-based initial alignment** from the masks: centroid and principal axes of the tissue shape; both 180° candidates kept. Test: pure translation within 2 px; rotations of 45° and 170° within 10°.
-  - M3-07b **Feature detection inside the tissue:** contrast normalisation (CLAHE), SIFT keypoints and descriptors with the mask as detection region. Test: keypoints only inside the mask; synthetic debris yields no keypoints.
-  - M3-07c **Matching and robust fit:** nearest-neighbour matching with a ratio test (and optional consistency with the initial alignment), RANSAC fit of a rigid transform; inlier count and residual reported. Test: **AC4** (1 px, 0.5°) on 5 seeded synthetic pairs with `perturb`; 30% injected false matches do not change the result.
-  - M3-07d **Boundary fallback** when inliers are below a threshold: iterative closest point on the two tissue outlines, starting from M3-07a. Test: a pair with texture removed (shape only) aligns within 3 px.
-  - M3-07e **Result conversion** to micrometres following the M3-00 conventions (direction moving → fixed). Test: matches M3-05 conventions at 32x and 4x.
-  - M3-07f Mirrored candidate (match against the mirrored moving image), **only if M3-06 finds flipped slices**. Test: a mirrored synthetic pair is recovered.
-  - M3-07g Intensity refinement inside the masks (SimpleITK), **only if** M3-07c misses AC4 or the spike shows feature-based residuals are too large. Test: AC4.
-- **Acceptance:** AC4 passes; an unrelated image pair yields few inliers and is reported as failed (no silent wrong transform); results are identical with and without background debris.
+  - M3-07a **Boundary-based initial alignment** from the masks: centroid and principal axes; both 180° candidates, the better mask IoU wins. Test: translation within 2 px; rotations of 45° and 170° within 10°.
+  - M3-07b **ORB features inside the tissue** (mask as detection region, up to `reg_max_features`). Test: keypoints only inside the mask; debris yields none.
+  - M3-07c **Guided matching and RANSAC similarity fit, coarse-to-fine:** pass 1 at 64x within `reg_window_um[0]` of the boundary estimate, pass 2 at 32x within `reg_window_um[1]` of the pass-1 fit; ratio test among the candidates inside the window; `estimateAffinePartial2D` with `reg_ransac_px`. Test: **AC4** (1 px, 0.5°, 0.3% scale) on 5 seeded synthetic pairs with `perturb` and scale changes up to ±10%; 30% injected false matches do not change the result.
+  - M3-07d **Boundary fallback** (C12): iterative closest point on the two tissue outlines with a similarity fit, starting from M3-07a, when pass 2 misses `reg_min_inliers` or `reg_max_rms_um`. Test: a texture-free pair aligns within 3 px and is reported as `boundary`.
+  - M3-07e **Result conversion** to micrometres per C1/C2 (direction moving → fixed) and status per C12. Test: consistent with M3-05 at 32x and 64x; an unrelated pair is reported `failed`.
+  - M3-07g Intensity refinement inside the masks (SimpleITK), **only if** M3-07c misses AC4. Test: AC4.
+  - (M3-07f, mirrored candidate, dropped: no mirrored slices, decision 12.)
+- **Acceptance:** AC4 passes; an unrelated pair is reported as failed (no silent wrong transform); results identical with and without background debris; about 5 s per pair at 32x on the real data (spike timing).
 - **Tests:** `tests/unit/test_boundary.py`, `tests/unit/test_features.py`, `tests/unit/test_pairwise.py`.
 
 #### M3-08 Chain and register a slice range · Low · To do
-- **Objective:** Pairwise transforms for consecutive slices, composed to slice 1's frame.
+- **Objective:** Pairwise transforms for consecutive slices, composed to the reference slice's frame (C5), as the `register` stage (C7).
 - **Inputs:** catalog range, work dir. **Outputs:** `transforms/pair_{id}.json` (transform + match quality: method, matches, inliers, residual), `transforms/chained_{id}.json` (slice 1 = identity).
 - **Depends on:** M3-07, M3-01, M3-03, M3-04. **Files:** `src/brainrec/registration/chain.py`.
-- **Acceptance:** chained = composition of pairs in the documented order; per-pair resume via manifest.
+- **Acceptance:** chained = composition of pairs in the documented order (C2); per-pair resume via manifest (C6); a `failed` pair stops the run and is reported, with no chained transform written past it (C12).
 - **Tests:** `tests/unit/test_chain.py` (known synthetic chain of 4 transforms; resume skips done pairs).
 
 ### Component: volume
@@ -406,15 +412,15 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 #### M3-09 Volume builder with transforms, tissue only · High · To do
 - **Objective:** Resample slices through their chained transforms into the pyramid, keeping only tissue (F12).
 - **Inputs:** `Catalog`, chained transforms, tissue masks, `VolumeSpec`. **Outputs:** `volume.zarr` as in M2, registered, tissue only.
-- **Interface change:** `build_volume(..., transforms: dict[int, Rigid2D] | None = None, masks: dict[int, Path] | None = None)`; `None` keeps M2 behaviour (centred, whole scan). Consequence: the manifest signature includes hashes of the transforms and masks, so changes trigger the overwrite guard.
+- **Interface change:** `build_volume(..., transforms: dict[int, Transform2D] | None = None, masks: dict[int, Path] | None = None)`; `None` keeps M2 behaviour (centred, whole scan). Consequence: the manifest signature includes hashes of the transforms and masks, so changes trigger the overwrite guard.
 - **Depends on:** M3-05, M2-05 (mask files from M3-04 for real runs; tests use synthetic masks). **Files:** `src/brainrec/volume/builder.py`, `src/brainrec/volume/warp.py` (new), `docs/ARCHITECTURE.md`.
 - **Subtasks:**
   - M3-09a Canvas from the bounding box of all **transformed tissue masks** (µm) plus the safety margin, not of the scanned area; aligned offsets. Test: known transforms and masks give the expected canvas; glass-only areas outside it.
   - M3-09b Output tiles equal to shards (4096 x 4096): for each tile, the inverse-mapped source bounding box, clipped to the slice. Test: rotated tile maps to the expected source box; memory bounded (box at most about 5800 px square).
   - M3-09c Warp one tile: read the source box, `cv2.warpAffine` (bilinear, white border), write the tile. Test: integer translation reproduces pixels exactly; 90 degree rotation moves the marker to the expected place.
-  - M3-09d Apply per level using the same `Rigid2D`. Test: the marker is at the same physical position at all 5 levels.
+  - M3-09d Apply per level using the same `Transform2D`. Test: the marker is at the same physical position at all 5 levels.
   - M3-09e Signature and resume with transforms and masks. Test: unchanged inputs resume; changed ones are refused without overwrite.
-  - M3-09f **Tissue masking:** warp each mask with the slice's transform to the tile, enlarge by the safety margin (about 50 µm, proposed), set voxels outside to the fill value (255, 255, 255) before writing, so all-background chunks are not stored. Tissue voxels that are exactly (255, 255, 255) are stored as (254, 254, 254), so pure white means background unambiguously (C11; needed for the transparent display, M3-12). Test: no non-background voxel outside the enlarged mask; every tissue voxel kept and never pure white; background-only tiles write no chunk.
+  - M3-09f **Tissue masking:** warp each mask with the slice's transform to the tile, enlarge by `volume_mask_margin_um` (50 µm, approved), set voxels outside to the fill value (255, 255, 255) before writing, so all-background chunks are not stored. Tissue voxels that are exactly (255, 255, 255) are stored as (254, 254, 254), so pure white means background unambiguously (C11; needed for the transparent display, M3-12). Test: no non-background voxel outside the enlarged mask; every tissue voxel kept and never pure white; background-only tiles write no chunk.
 - **Acceptance:** with synthetic slices moved by known transforms, the inverse transforms put all markers on one (x, y) across z within 1 px at the base level; AC9 holds on synthetic data (tissue only, nothing cut off).
 - **Tests:** `tests/unit/test_volume_warp.py`; existing `tests/unit/test_volume.py` still passes unchanged.
 

@@ -1,6 +1,6 @@
 # Implementation plan (MVP, from M3 onwards)
 
-Status: **section 8 approved and applied** to the backlog (2026-10-19); the contracts in section 5 stay proposed until M3-00. Updated the same day for two owner requirements: **tissue only (F12)** and **feature-based alignment (F13)**, see `docs/decisions/0003-tissue-only-feature-based-registration.md`. Sources: [docs/MVP.md](../docs/MVP.md), [tasks/BACKLOG.md](BACKLOG.md), [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md), [docs/REQUIREMENTS.md](../docs/REQUIREMENTS.md), [CLAUDE.md](../CLAUDE.md).
+Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06) done; step 2 (contracts, M3-00) done and approved** (2026-10-20); the fixed contracts are in `docs/ARCHITECTURE.md` section 5.1. Updated on 2026-10-19 for two owner requirements: **tissue only (F12)** and **feature-based alignment (F13)**, see `docs/decisions/0003-tissue-only-feature-based-registration.md`. Sources: [docs/MVP.md](../docs/MVP.md), [tasks/BACKLOG.md](BACKLOG.md), [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md), [docs/REQUIREMENTS.md](../docs/REQUIREMENTS.md), [CLAUDE.md](../CLAUDE.md).
 
 ## 0. Where we are
 
@@ -42,7 +42,8 @@ flowchart TD
     C0 --> M305[M3-05 transform model]
     C0 --> M301[M3-01 work-dir layout]
     C0 --> M302[M3-02 synthetic generator]
-    M301 --> M303[M3-03 registration image] --> M304[M3-04 tissue mask]
+    C0 --> M304[M3-04 tissue mask] --> M303[M3-03 registration image]
+    M301 --> M303
     M302 --> M307[M3-07 feature-based registration]
     M305 --> M307
     M304 -.-> M307
@@ -83,16 +84,16 @@ Tasks are implemented one at a time (CLAUDE.md), so "critical path" here mostly 
 
 | Step | Task | Why at this point | Gate |
 |---|---|---|---|
-| 1 | **M3-06 (re-scoped) Real-data spike: orientation, tissue masks, feature matching** | Resolves R7 and gives the first answers to R5, R9 and R10 on real slices; its results decide contract details (D5). | Owner reviews contact sheet and overlays; decisions recorded |
-| 2 | **M3-00 Registration contracts** (new, docs only) | Fixes the contracts in section 5 once, with the spike's facts. | Owner approves |
+| 1 | **M3-06 Real-data spike** (done 2026-10-19/20) | Resolved R7, R9, R10 and answered R5 (similarity needed); owner decisions 11 to 15. | Done |
+| 2 | **M3-00 Registration contracts** (done 2026-10-20) | Contracts C1 to C12 fixed in ARCHITECTURE section 5.1 with the spike's facts. | Approved 2026-10-20 |
 | 3 | M3-05 Transform model | Centre of the critical path; unblocks M3-07, M3-09, M4-01, M4-02. | Tests |
 | 4 | M3-02 Synthetic generator (tissue with features, debris on the glass) | Needed by M3-07 tests. | Tests |
-| 5 | M3-07a+b Boundary-based initial alignment; features inside the tissue | First half of the High task. | Tests |
-| 6 | M3-07c+e Matching, RANSAC fit, conversion to µm | **AC4** on synthetic data. | **AC4 passes** |
-| 7 | M3-07d (+f, +g if needed) Boundary fallback (mirror, intensity refinement only if the spike or AC4 require them) | Robustness for feature-poor pairs. | Tests |
+| 5 | M3-07a+b Boundary-based initial alignment; ORB features inside the tissue | First half of the High task. | Tests |
+| 6 | M3-07c+e Guided two-pass matching (64x, 32x), RANSAC similarity fit, conversion to µm, status | **AC4** on synthetic data. | **AC4 passes** |
+| 7 | M3-07d (+g only if AC4 is missed) Boundary fallback (outline ICP); intensity refinement only if needed | Robustness for feature-poor pairs. | Tests |
 | 8 | M3-01 Work-dir layout | Cheap; needed by M3-03 and M3-08. | Tests |
-| 9 | M3-03 Registration image (incl. `SliceSource` move) | Off-path, needed by M3-08. | Tests |
-| 10 | M3-04 Tissue mask | Defines "tissue" for real data; needed by M3-08 and M3-09 runs. | Tests |
+| 9 | M3-04 Tissue mask (fragments kept, hysteresis) | Defines "tissue"; the registration image needs it. | Tests; owner checks the contact sheet |
+| 10 | M3-03 Registration image and preprocessing stage (incl. `SliceSource` move) | Off-path, needed by M3-08. | Tests |
 | 11 | M3-08 Chain and register a range | Joins registration and preprocessing. | Tests |
 | 12 | M3-09a+b Canvas from the tissue extent; tile mapping | Volume warp, first half. | Tests |
 | 13 | M3-09c+d+e+f Warp, levels, resume, tissue masking | Volume warp, second half; AC9 on synthetic data. | Tests; existing volume tests unchanged |
@@ -134,7 +135,7 @@ Tasks within a group do not depend on each other and touch disjoint files, so th
 
 ## 5. Missing interface contracts
 
-These are not defined anywhere yet, or are defined inconsistently. Each would otherwise be decided ad hoc inside a task and leak into later ones. **All are "Proposed" until approved in M3-00.**
+**Superseded:** these contracts were fixed in task M3-00 (2026-10-20) and now live in `docs/ARCHITECTURE.md` section 5.1, which is authoritative. The table below is kept as the proposal history. Main changes from it: C2 uses `Transform2D` (similarity) instead of `Rigid2D`; C3 is similarity without reflection; C4 uses PNG and derives the mask from colour saturation, with detached fragments kept and the mask computed before the registration image; C9 and C12 carry the thresholds measured in the spike (ORB, windows 2.5 mm and 0.3 mm, 40 inliers, 25 µm, IoU 0.80, Dice 0.90).
 
 | ID | Contract | Why it matters | Proposed definition |
 |---|---|---|---|
@@ -155,7 +156,9 @@ Also to tidy in ARCHITECTURE section 5 during M3-00: the M3/M4 entries are marke
 
 ---
 
-## 6. First task: M3-06 (re-scoped) Real-data spike: orientation, tissue masks, feature matching
+## 6. First task (done): M3-06 Real-data spike: orientation, tissue masks, feature matching
+
+Done on 2026-10-19/20; results in `docs/REQUIREMENTS.md` section 7, decisions 11 to 15. After M3-00 is approved, the next task is **M3-05 `Transform2D` (similarity) model** (step 3). The original task description follows.
 
 - **Objective:** Before writing registration code, learn from real slices:
   - (a) whether any slices are mirrored (R7);

@@ -16,7 +16,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 - Read NDPI slices lazily, in order of the `N_H` number in the filename.
 - Tissue detection per slice: the empty glass around the tissue is ignored everywhere; the volume contains only tissue.
-- Automatic, feature-based slice-to-slice registration: tissue-boundary alignment, then features inside the tissue matched between neighbouring slices with a robust fit (rigid first; non-rigid and drift correction later).
+- Automatic, feature-based slice-to-slice registration: tissue-boundary alignment, then features inside the tissue matched between neighbouring slices with a robust fit (similarity transform in the MVP; non-rigid and drift correction later).
 - Registration quality control inside the tissue: metrics, overlays with tissue outlines, flagging (manual overrides later).
 - Multi-resolution 3D volume with a precomputed pyramid down to about 1 µm/pixel (to be confirmed).
 - Browser viewer: 3D and orthogonal slice views, zoom in and out.
