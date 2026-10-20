@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from brainrec.registration import Transform2D
+from brainrec.registration import RegImage, Transform2D
 
 UM_PER_PX = 32 * 0.2205  # the real registration level
 GLASS = np.array([236, 233, 236], float)
@@ -224,3 +224,14 @@ def perturb(rgb: np.ndarray, mask: np.ndarray, seed: int, strength: float = 1.0)
     out[sel] = extra[sel]
     out[inside] += rng.normal(0, 2.5 * strength, (int(inside.sum()), 3))
     return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def as_reg_image(rgb: np.ndarray, mask: np.ndarray, slice_id: int = 0) -> RegImage:
+    """Synthetic section as a registration image (contract C4: 255 - luminance, background set
+    to 0 *before* CLAHE so the glass cannot influence the contrast, CLAHE, 0 outside the mask)
+    at the real registration level (32x, mpp 0.2205 µm)."""
+    inv = 255 - cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    inv[mask == 0] = 0
+    img = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(inv)
+    img[mask == 0] = 0
+    return RegImage(slice_id, img, mask, 32.0, (0.2205, 0.2205))

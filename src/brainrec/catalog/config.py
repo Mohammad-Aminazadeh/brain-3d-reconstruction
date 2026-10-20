@@ -13,6 +13,18 @@ class ProjectConfig(BaseModel):
     base_downsample: int = 4  # volume base level: 4 = 0.88 um/px
     n_levels: int = 5  # pyramid levels: base, 2x, 4x ... coarser
 
+    # registration (contract C9; defaults from the M3-06 spike)
+    reg_downsample: int = 32  # registration image level (about 7 µm/px)
+    reg_coarse_factor: int = 2  # pass 1 runs at reg_downsample * this (64x)
+    reg_detector: str = "orb"
+    reg_max_features: int = 50_000
+    reg_ratio_test: float = 0.8
+    reg_window_um: tuple[float, float] = (2500.0, 300.0)  # search windows of pass 1 and pass 2
+    reg_ransac_px: float = 4.0
+    reg_min_inliers: int = 40
+    reg_max_rms_um: float = 25.0
+    boundary_min_iou: float = 0.80
+
     @classmethod
     def load(cls, path: Path) -> "ProjectConfig":
         return cls(**yaml.safe_load(path.read_text()))

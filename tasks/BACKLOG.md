@@ -45,7 +45,7 @@ Conventions that apply to every task (not repeated below):
 | M3-03 | Registration image and preprocessing stage | preprocess | Medium | To do | M3-01, M3-04 |
 | M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | To do | M3-00 |
 | M3-05 | `Transform2D` (similarity) model | registration | Medium | Done | M3-00 |
-| M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | To do | M3-02, M3-05 (M3-04 soft) |
+| M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | Done | M3-02, M3-05 (M3-04 soft) |
 | M3-08 | Chain and register a slice range | registration | Low | To do | M3-07, M3-01, M3-03, M3-04 |
 | M3-09 | Volume builder with transforms, tissue only | volume | High | To do | M3-05, M2-05 (M3-04 soft) |
 | M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | To do | M3-08, M3-09, M2-11 |
@@ -390,7 +390,7 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Tests:** `tests/unit/test_transform.py` (identity, inverse round trip, composition order, JSON round trip, pixel conversion at three levels including the half-pixel convention, family validation).
 - **Result (2026-10-20):** `src/brainrec/registration/transform.py`; also `from_pixels()` (inverse of `to_pixels`, for converting OpenCV's pixel-space RANSAC result in M3-07, as C1 requires all conversion in this module). 33 tests in `tests/unit/test_transform.py`, including a 140-transform chain that stays a valid similarity.
 
-#### M3-07 Feature-based pairwise registration (guided ORB, similarity, tissue only) · High · To do
+#### M3-07 Feature-based pairwise registration (guided ORB, similarity, tissue only) · High · Done
 - **Objective:** Estimate the similarity transform aligning slice k to slice k-1 by detecting features in both images and matching them (F13), using only the tissue (F12), as validated in the spike.
 - **Inputs:** two `RegImage`s (image, mask, metadata). **Outputs:** `PairResult` (contract C2/C12): `Transform2D` (moving → fixed, µm), status (`features`, `boundary` or `failed`), matches, inliers, residual (µm), mask IoU.
 - **Depends on:** M3-02, M3-05; M3-04 soft (tests use synthetic ground-truth masks; the mask contract C4 is fixed). **Files:** `src/brainrec/registration/{boundary,features,pairwise}.py`, `src/brainrec/catalog/config.py` (registration fields of C9).
@@ -405,6 +405,17 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Acceptance:** AC4 passes; an unrelated pair is reported as failed (no silent wrong transform); results identical with and without background debris; about 5 s per pair at 32x on the real data (spike timing).
 - **Tests:** `tests/unit/test_boundary.py`, `tests/unit/test_features.py`, `tests/unit/test_pairwise.py`.
 - **Note from M3-02 (2026-10-20), agreed by the owner:** AC4 (1 px, 0.5°, 0.3%) is specified on *perturbed copies of the same section*, where matching is easy. On realistic *neighbouring sections* (different cells), the spike-quality method reaches 0.5 to 4.4 px, ≤ 0.54° and ≤ 0.92%. M3-07 needs a refinement step for precision. Decision: keep AC4 as specified, and add a robustness test on neighbouring sections with a tolerance taken from the real-data residual (about 17 µm ≈ 2.5 px).
+- **Result (2026-10-20):** `src/brainrec/registration/{types,geometry,boundary,features,pairwise}.py`; registration settings of C9 in `ProjectConfig`; 31 tests (boundary 9, features 7, pairwise 15).
+  - **AC4** (5 seeded same-section pairs, up to 170° and ±10% scale): ≤ 0.011° angle, ≤ 0.011% scale, ≤ 0.46 px maximum displacement. **Passed.**
+  - **Neighbouring sections** (agreed robustness test): mean ≤ 2.08 px, residual 17 to 19 µm (real data: 16 to 19 µm). **Passed.**
+  - **Real slices 1 to 10** (read-only check, spike loader): all 9 pairs `features`, 67 to 899 inliers, residual 16 to 19 µm, mask IoU 0.838 to 0.977, about 7 s per pair. Overlays of the damaged pairs 3→4 and 5→6 show internal structures aligned; remaining differences are tears and folds.
+  - **Findings fixed while implementing:**
+    - ORB keypoints on coarser pyramid levels are offset by half a pixel times (scale − 1); this is now corrected, which halved the bias seen at 180° rotations.
+    - The C12 plausibility rule was added (mask IoU); see ARCHITECTURE section 5.1.
+    - C4 now sets the background before CLAHE.
+    - Degenerate fits are rejected.
+    - Outline ICP needed 150 iterations, not 40, on roundish outlines.
+  - **Subtask decisions:** M3-07g (intensity refinement) is not needed; AC4 passes without it. M3-07f (mirror) was dropped, decision 12.
 
 #### M3-08 Chain and register a slice range · Low · To do
 - **Objective:** Pairwise transforms for consecutive slices, composed to the reference slice's frame (C5), as the `register` stage (C7).

@@ -124,14 +124,16 @@ preprocess_slice(slice: SliceRef, work: WorkDir, cfg: ProjectConfig,
     # one read of the 32x level; writes reg/{id}.png, reg/{id}.json, mask/{id}.png
 
 # registration                       # M3, feature-based (F13), tissue only (F12), similarity (C2, C3)
-RegImage(slice_id, image, mask, downsample, mpp_um)    # .load(work, id); .coarse() = 2x area-downsampled copy (64x)
+RegImage(slice_id, image, mask, downsample, mpp_um)    # implemented (M3-07): .coarse(); .load(work, id) comes in M3-03
 Transform2D                          # implemented (M3-05), registration/transform.py; see C2
 px_to_um(points, downsample, mpp), um_to_px(...)   # implemented (M3-05): the C1 helpers
-initial_from_masks(fixed: RegImage, moving: RegImage) -> Transform2D   # centroid + principal axes, 2 candidates
-detect_features(img: RegImage, cfg) -> Features        # ORB keypoints + descriptors inside the mask only
-guided_match(fixed: Features, moving: Features, predict: Transform2D, window_um: float, cfg) -> Matches
-fit_similarity(matches: Matches, cfg) -> FitResult     # RANSAC; transform, inliers, rms_um
-register_pair(fixed: RegImage, moving: RegImage, cfg) -> PairResult
+# helpers (implemented, M3-07) work in pixel space with plain arguments, so they are testable alone:
+initial_from_masks(fixed_mask, moving_mask) -> (matrix_px, iou)   # centroids, area-ratio scale, best angle
+align_outlines(fixed_mask, moving_mask, init_px) -> (matrix_px, iou)  # outline ICP, trimmed similarity
+detect_features(img: RegImage, max_features, detector="orb") -> Features   # inside the mask only
+guided_match(fixed: Features, moving: Features, predict_px, window_px, ratio) -> (src_xy, dst_xy)
+fit_similarity(src_xy, dst_xy, ransac_px) -> Fit | None    # RANSAC + least-squares refit; None if degenerate
+register_pair(fixed: RegImage, moving: RegImage, cfg) -> PairResult   # implemented (M3-07); the public contract
     # boundary estimate -> pass 1 at 64x (window 2.5 mm) -> pass 2 at 32x (window 0.3 mm);
     # boundary fallback and failure rules per C12
     # PairResult: transform (moving -> fixed), status ("features" | "boundary" | "failed"),
@@ -214,7 +216,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
   1. Otsu on blurred HSV saturation, with hysteresis: pixels at ≥ `mask_hysteresis` × threshold count as tissue if they connect to pixels at or above the threshold. This keeps pale tissue.
   2. Close (about 100 µm), then open (about 35 µm), then fill holes.
   3. Keep **every** component of at least `mask_min_component_mm2`, so detached fragments are kept (decision 14); debris specks are smaller than 0.2 mm².
-- **`reg/{id}.png`:** uint8, 255 minus luminance, CLAHE (clip 2.0, 8x8 tiles), 0 outside the mask. The 64x image for pass 1 is derived in memory by 2x area downsampling and not stored.
+- **`reg/{id}.png`:** uint8, 255 minus luminance, with the background set to 0 **before** CLAHE (clip 2.0, 8x8 tiles) and again after, so glass and debris cannot influence the contrast inside the tissue (refined in M3-07, where a debris-invariance test caught it). The 64x image for pass 1 is derived in memory by 2x area downsampling and not stored.
 - **`reg/{id}.json`:** `{"schema": "brainrec.regimage/1", "slice_id", "source", "downsample", "mpp_um": [x, y], "width", "height"}`.
 - PNG, not TIFF: lossless and written by OpenCV, with no extra dependency in this path.
 
@@ -266,7 +268,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - The viewer shows pure white as transparent (decision 10).
 
 **C12 Acceptance and failure rules per pair.**
-- **`features`:** pass-2 inliers ≥ `reg_min_inliers` and rms ≤ `reg_max_rms_um`.
+- **`features`:** pass-2 inliers ≥ `reg_min_inliers`, rms ≤ `reg_max_rms_um`, **and** mask IoU of the result ≥ `boundary_min_iou`. The last condition was added in M3-07: without it, an unrelated pair was accepted with 47 consistent but spurious matches (scale 0.39, IoU 0.09). Real pairs 1 to 10 all pass (lowest IoU 0.838).
 - **`boundary`:** otherwise, outline alignment (iterative closest point on the two tissue outlines, similarity, starting from the boundary estimate) is used if its mask IoU ≥ `boundary_min_iou`.
 - **`failed`:** neither passes. `register` stops at the failed pair and reports it; no chained transform is written past it. A wrong transform is never accepted silently.
 - QC separately flags pairs whose mask Dice is below `qc_min_dice`.
