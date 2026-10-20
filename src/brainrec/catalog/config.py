@@ -19,11 +19,14 @@ class ProjectConfig(BaseModel):
     reg_detector: str = "orb"
     reg_max_features: int = 50_000
     reg_ratio_test: float = 0.8
-    reg_window_um: tuple[float, float] = (2500.0, 300.0)  # search windows of pass 1 and pass 2
-    reg_ransac_px: float = 4.0
+    # search windows of pass 1 and pass 2; pass 1 was 2500 µm in the spike, narrowed in M3-08 so an
+    # unevenly deformed section cannot drift to a precise fit of one region (real pair 4->5)
+    reg_window_um: tuple[float, float] = (1000.0, 300.0)
+    reg_ransac_px: float = 4.0  # RANSAC tolerance in pixels of the level being fitted
     reg_min_inliers: int = 40
     reg_max_rms_um: float = 25.0
     boundary_min_iou: float = 0.80
+    reg_ncc_tolerance: float = 0.01  # feature fit may not correlate clearly worse than the outline
 
     # tissue mask (contract C4, C9; decision 14: detached fragments are tissue)
     mask_hysteresis: float = 0.75  # pale pixels >= this x threshold count if connected to tissue

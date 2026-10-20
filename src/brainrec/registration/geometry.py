@@ -25,6 +25,29 @@ def rms(m: np.ndarray, src: np.ndarray, dst: np.ndarray) -> float:
     return float(np.sqrt(((apply_px(m, src) - dst) ** 2).sum(1).mean())) if len(src) else np.inf
 
 
+def masked_ncc(
+    fixed: np.ndarray,
+    fixed_mask: np.ndarray,
+    moving: np.ndarray,
+    moving_mask: np.ndarray,
+    m_moving_to_fixed: np.ndarray,
+    blur_px: float = 3.0,
+) -> float:
+    """Normalised cross-correlation of the two images where both tissues overlap, after a light
+    blur (cells differ between sections; vessels, bands and edges should correlate)."""
+    size = fixed.shape[::-1]
+    warped = cv2.warpAffine(moving, m_moving_to_fixed[:2], size, flags=cv2.INTER_LINEAR)
+    wmask = cv2.warpAffine(moving_mask, m_moving_to_fixed[:2], size, flags=cv2.INTER_NEAREST)
+    sel = (fixed_mask > 0) & (wmask > 0)
+    if sel.sum() < 100:
+        return -1.0
+    a = cv2.GaussianBlur(fixed.astype(np.float32), (0, 0), blur_px)[sel]
+    b = cv2.GaussianBlur(warped.astype(np.float32), (0, 0), blur_px)[sel]
+    a, b = a - a.mean(), b - b.mean()
+    denom = float(np.sqrt((a * a).sum() * (b * b).sum()))
+    return float((a * b).sum() / denom) if denom > 0 else -1.0
+
+
 def mask_iou(fixed: np.ndarray, moving: np.ndarray, m_moving_to_fixed: np.ndarray) -> float:
     """IoU of the fixed mask and the moving mask warped into the fixed frame."""
     warped = cv2.warpAffine(

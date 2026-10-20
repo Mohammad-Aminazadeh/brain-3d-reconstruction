@@ -1,4 +1,5 @@
 import json
+import math
 
 import cv2
 import numpy as np
@@ -41,14 +42,55 @@ def test_ac4_recovers_known_similarity(seed, angle, scale):
     assert da < 0.5 and ds < 0.003 and d.max() < 1.0
 
 
-# robustness: neighbouring sections (different cells); tolerance from the real-data residual
-@pytest.mark.parametrize("seed, angle, scale", [(0, 45.0, 1.10), (1, -170.0, 0.90), (4, 8.0, 1.0)])
-def test_neighbouring_sections_within_real_residual(seed, angle, scale):
+# robustness: neighbouring sections (different cells); tolerance from the real-data residual.
+# In the synthetic model neighbouring sections have *identical* outlines, so the outline estimate
+# is perfect and may legitimately win under the C12 correlation rule; real outlines differ (tears,
+# folds) and there the feature fit wins (all 9 real pairs of slices 1 to 10). Hence two checks:
+NEIGHBOUR_CASES = [(0, 45.0, 1.10), (1, -170.0, 0.90), (4, 8.0, 1.0)]
+
+
+ALL_NEIGHBOUR_CASES = [
+    (s, a, sc) for s in range(5) for a, sc in ((45.0, 1.10), (-170.0, 0.90), (8.0, 1.0))
+]
+
+
+def test_neighbouring_sections_feature_path_precision():
+    """Agreed tolerance (owner, 2026-10-20), statistical over 15 cases: average below 2.5 px
+    (about 17 µm, the real-data residual) and every case below 3.5 px (about 25 µm,
+    `reg_max_rms_um`). Single cases reach 2.5 to 3.2 px whatever the settings (M3-08)."""
+    errors = []
+    for seed, angle, scale in ALL_NEIGHBOUR_CASES:
+        fixed, moving, truth, mm = _pair(seed, angle, scale, neighbour=True)
+        r = register_pair(fixed, moving, CFG.model_copy(update={"reg_ncc_tolerance": 1.0}))
+        da, ds, d = _errors(r, truth, mm)
+        assert r.status == "features" and r.rms_um is not None and r.rms_um <= CFG.reg_max_rms_um
+        assert da < 1.0 and ds < 0.01, (seed, angle, scale)
+        errors.append(d.mean())
+    assert np.mean(errors) < 2.5 and max(errors) < 3.5, [round(e, 2) for e in errors]
+
+
+@pytest.mark.parametrize("seed, angle, scale", NEIGHBOUR_CASES)
+def test_neighbouring_sections_final_result(seed, angle, scale):
     fixed, moving, truth, mm = _pair(seed, angle, scale, neighbour=True)
     r = register_pair(fixed, moving, CFG)
-    da, ds, d = _errors(r, truth, mm)
-    assert r.status == "features" and r.rms_um is not None and r.rms_um <= CFG.reg_max_rms_um
-    assert d.mean() < 2.5 and da < 1.0 and ds < 0.01
+    assert r.status in ("features", "boundary") and _errors(r, truth, mm)[2].mean() < 2.5
+
+
+def test_correlation_rule_rejects_a_fit_worse_than_the_outline(monkeypatch):
+    """C12: a feature fit that explains the images clearly worse than the outline estimate is
+    not accepted (real pair 4->5 once drifted to a precise fit of one region, -12.7°)."""
+    import brainrec.registration.pairwise as pw
+
+    fixed, moving, truth, mm = _pair(2, 20.0, 1.0)
+    bad = Transform2D.similarity(math.radians(8.0), 1.0, 0.0, 0.0).compose(truth)  # 8° off
+
+    def biased(*args, **kwargs):
+        return pw.Fit(bad.to_pixels(32, 32, fixed.mpp_um)[:2], 500, 400, 1.0)
+
+    monkeypatch.setattr(pw, "_guided_pass", biased)
+    r = register_pair(fixed, moving, CFG)
+    assert r.status == "boundary"  # outline alignment instead of the wrong feature fit
+    assert _errors(r, truth, mm)[2].mean() < 3.0
 
 
 def test_debris_does_not_change_the_result():

@@ -6,7 +6,7 @@ import logging
 from brainrec.catalog import ProjectConfig
 from brainrec.registration.boundary import align_outlines, initial_from_masks
 from brainrec.registration.features import Fit, detect_features, fit_similarity, guided_match
-from brainrec.registration.geometry import mask_iou
+from brainrec.registration.geometry import mask_iou, masked_ncc
 from brainrec.registration.transform import Transform2D
 from brainrec.registration.types import PairResult, RegImage, Status
 
@@ -14,7 +14,12 @@ log = logging.getLogger(__name__)
 
 
 def _guided_pass(
-    fixed: RegImage, moving: RegImage, estimate: Transform2D, window_um: float, cfg: ProjectConfig
+    fixed: RegImage,
+    moving: RegImage,
+    estimate: Transform2D,
+    window_um: float,
+    ransac_px: float,
+    cfg: ProjectConfig,
 ) -> Fit | None:
     """One guided matching pass at the images' level, around `estimate` (moving -> fixed)."""
     mpp = fixed.mpp_um
@@ -22,7 +27,7 @@ def _guided_pass(
     ff = detect_features(fixed, cfg.reg_max_features, cfg.reg_detector)
     fm = detect_features(moving, cfg.reg_max_features, cfg.reg_detector)
     src, dst = guided_match(ff, fm, predict, window_um / fixed.um_per_px, cfg.reg_ratio_test)
-    return fit_similarity(src, dst, cfg.reg_ransac_px)
+    return fit_similarity(src, dst, ransac_px)
 
 
 def _to_um(fit: Fit, fixed: RegImage, moving: RegImage) -> Transform2D:
@@ -42,11 +47,16 @@ def register_pair(fixed: RegImage, moving: RegImage, cfg: ProjectConfig) -> Pair
     boundary_estimate = estimate
 
     # pass 1 (coarse, wide window), pass 2 (fine, narrow window, once more to refine)
-    fit = _guided_pass(fc, mc, estimate, cfg.reg_window_um[0], cfg)
-    if fit is not None:
-        estimate = _to_um(fit, fc, mc)
+    # pass 1 twice: the first run corrects the outline estimate with matches near the centre
+    # (where the 1 mm window is wide enough); the second then finds matches across the section
+    fit = None
     for _ in range(2):
-        fine = _guided_pass(fixed, moving, estimate, cfg.reg_window_um[1], cfg)
+        coarse = _guided_pass(fc, mc, estimate, cfg.reg_window_um[0], cfg.reg_ransac_px, cfg)
+        if coarse is None:
+            break
+        fit, estimate = coarse, _to_um(coarse, fc, mc)
+    for _ in range(2):
+        fine = _guided_pass(fixed, moving, estimate, cfg.reg_window_um[1], cfg.reg_ransac_px, cfg)
         if fine is None:
             break
         fit, estimate = fine, _to_um(fine, fixed, moving)
@@ -60,11 +70,18 @@ def register_pair(fixed: RegImage, moving: RegImage, cfg: ProjectConfig) -> Pair
             round(mask_iou(fixed.mask, moving.mask, m), 4),
         )  # fmt: skip
 
+    def ncc(t: Transform2D) -> float:
+        m = t.to_pixels(moving.downsample, fixed.downsample, mpp)
+        return masked_ncc(fixed.image, fixed.mask, moving.image, moving.mask, m)
+
     if (
         fit is not None
         and fit.n_inliers >= cfg.reg_min_inliers
         and fit.rms_px * fixed.um_per_px <= cfg.reg_max_rms_um
         and result(estimate, "features", fit).mask_iou >= cfg.boundary_min_iou  # C12: plausible
+        # C12: the feature fit must explain the images at least as well as the outline estimate
+        # (a precise fit of one region of an unevenly deformed section can be worse overall)
+        and ncc(estimate) >= ncc(boundary_estimate) - cfg.reg_ncc_tolerance
     ):
         return result(estimate, "features", fit)
 

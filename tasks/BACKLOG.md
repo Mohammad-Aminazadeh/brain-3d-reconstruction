@@ -46,7 +46,7 @@ Conventions that apply to every task (not repeated below):
 | M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | Done | M3-00 |
 | M3-05 | `Transform2D` (similarity) model | registration | Medium | Done | M3-00 |
 | M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | Done | M3-02, M3-05 (M3-04 soft) |
-| M3-08 | Chain and register a slice range | registration | Low | To do | M3-07, M3-01, M3-03, M3-04 |
+| M3-08 | Chain and register a slice range | registration | Low | Done | M3-07, M3-01, M3-03, M3-04 |
 | M3-09 | Volume builder with transforms, tissue only | volume | High | To do | M3-05, M2-05 (M3-04 soft) |
 | M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | To do | M3-08, M3-09, M2-11 |
 | M3-12 | Transparent background in the viewer | serve | Low | To do | M3-09 |
@@ -430,12 +430,17 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
     - Outline ICP needed 150 iterations, not 40, on roundish outlines.
   - **Subtask decisions:** M3-07g (intensity refinement) is not needed; AC4 passes without it. M3-07f (mirror) was dropped, decision 12.
 
-#### M3-08 Chain and register a slice range · Low · To do
+#### M3-08 Chain and register a slice range · Low · Done
 - **Objective:** Pairwise transforms for consecutive slices, composed to the reference slice's frame (C5), as the `register` stage (C7).
 - **Inputs:** catalog range, work dir. **Outputs:** `transforms/pair_{id}.json` (transform + match quality: method, matches, inliers, residual), `transforms/chained_{id}.json` (slice 1 = identity).
 - **Depends on:** M3-07, M3-01, M3-03, M3-04. **Files:** `src/brainrec/registration/chain.py`.
 - **Acceptance:** chained = composition of pairs in the documented order (C2); per-pair resume via manifest (C6); a `failed` pair stops the run and is reported, with no chained transform written past it (C12).
 - **Tests:** `tests/unit/test_chain.py` (known synthetic chain of 4 transforms; resume skips done pairs).
+- **Result (2026-10-20):**
+  - **Code:** `src/brainrec/registration/chain.py` (`chain`, `run_register`, `RegistrationFailedError`); 8 tests: composition order, pairs and chain against known truth, resume, extending the range, a new reference without re-registration, upstream change redoing only affected pairs, settings needing overwrite, failure stopping the chain (stale chained files removed), missing preprocessing.
+  - **Real slices 1 to 10:** 9 pairs in 86 s, all `features`, residual 16 to 19 µm; the second run skips all. Chained scale 1.02 to 0.97, consistent with the tissue sizes of slices 1 to 5 vs 6 to 10.
+  - **Problem found and fixed (changes M3-07 behaviour, see ARCHITECTURE C12):** with the final masks, pair 4→5 drifted to a precise fit of one region (−12.7°; correlation worse than the outline estimate) and passed C12. Fixes: pass-1 window 1 mm instead of 2.5 mm, pass 1 run twice, and the new C12 correlation rule (`reg_ncc_tolerance`). Pair 4→5 is now +3.3°.
+  - **Robustness criterion (approved by the owner, 2026-10-20):** on synthetic neighbouring sections the feature path averages about 1.3 px but 1 to 2 of 15 cases reach 2.5 to 3.2 px (up to 22 µm), whichever settings are used. The test `test_neighbouring_sections_feature_path_precision` requires every case below 2.5 px and fails for one case (3.13 px). Decision: the agreed tolerance is statistical over 15 cases (average below 2.5 px, every case below 3.5 px, about 25 µm = `reg_max_rms_um`); the test was changed accordingly and passes.
 
 ### Component: volume
 

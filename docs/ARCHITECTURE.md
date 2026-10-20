@@ -136,12 +136,14 @@ detect_features(img: RegImage, max_features, detector="orb") -> Features   # ins
 guided_match(fixed: Features, moving: Features, predict_px, window_px, ratio) -> (src_xy, dst_xy)
 fit_similarity(src_xy, dst_xy, ransac_px) -> Fit | None    # RANSAC + least-squares refit; None if degenerate
 register_pair(fixed: RegImage, moving: RegImage, cfg) -> PairResult   # implemented (M3-07); the public contract
-    # boundary estimate -> pass 1 at 64x (window 2.5 mm) -> pass 2 at 32x (window 0.3 mm);
+    # boundary estimate -> pass 1 at 64x (window 1 mm, twice) -> pass 2 at 32x (window 0.3 mm, twice);
     # boundary fallback and failure rules per C12
     # PairResult: transform (moving -> fixed), status ("features" | "boundary" | "failed"),
     #             n_matches, n_inliers, rms_um, mask_iou
-chain(pairs: dict[int, Transform2D], reference: int) -> dict[int, Transform2D]   # slice -> reference
-run_register(catalog, work, cfg, manifest, overwrite=False) -> StageResult       # stage shape C7
+chain(pairs: dict[int, Transform2D], ids: list[int]) -> dict[int, Transform2D]  # implemented (M3-08); reference = ids[0]
+run_register(catalog, work, cfg, manifest, reader_factory=..., overwrite=False) -> StageResult  # implemented (M3-08), C7
+    # raises RegistrationFailedError at a failed pair (C12); StageExistsError if settings changed
+masked_ncc(fixed, fixed_mask, moving, moving_mask, m_px) -> float   # geometry.py (M3-08); reused by QC
 correct_drift(...)                                       # post-MVP
 
 # qc                                 # M4, inside the tissue only
@@ -236,6 +238,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - Keys `preprocess`, `register`, `qc`, `volume`, each `{signature, done: [ids]}`.
 - A signature contains the stage's parameters, its id list and a hash of the upstream stage's signature. Changed inputs therefore invalidate downstream work; they are never silently reused.
 - *Refinement (M3-03):* for **per-slice** stages (`preprocess`), the signature holds only the parameters (and an algorithm version), and each done slice records a fingerprint of its source file (name, size, modification time) under `sources`. Extending a range keeps finished slices; a changed source is redone; changed parameters raise `StageExistsError` unless `overwrite`. Stages whose result depends on the whole set of slices (`register`, `volume`) keep the id list in their signature.
+- *Refinement (M3-08):* `register` resumes **per pair**. A pair is redone when the registration settings change (then `StageExistsError` unless `overwrite`), or when its inputs change: a hash of the preprocess signature and both slices' source fingerprints. The chained transforms are rebuilt from the pair files on every run (cheap), so extending the range or choosing another reference slice never redoes finished pairs.
 - `StageResult(done, skipped)`, `StageExistsError`, `fingerprint()` and `write_atomic()` (temporary file + rename) live in `store/stage.py`.
 
 **C7 Stage shape.**
@@ -255,11 +258,12 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 | `reg_detector` | `"orb"` | decision 12 |
 | `reg_max_features` | 50000 | spike |
 | `reg_ratio_test` | 0.8 | spike |
-| `reg_window_um` | [2500, 300] | spike (passes 1 and 2) |
+| `reg_window_um` | [1000, 300] | spike; pass 1 narrowed from 2500 in M3-08 (see C12) |
 | `reg_ransac_px` | 4.0 | spike |
 | `reg_min_inliers` | 40 | spike: lowest good pair had 62 |
 | `reg_max_rms_um` | 25.0 | spike: 16 to 19 µm observed |
 | `boundary_min_iou` | 0.80 | spike: 0.83 to 0.98 observed |
+| `reg_ncc_tolerance` | 0.01 | M3-08: feature fit may correlate at most this much worse than the outline estimate |
 | `mask_hysteresis` | 0.75 | to be validated in M3-04 |
 | `mask_min_component_mm2` | 0.25 | spike: fragments 0.6 to 2.8 mm², specks below 0.2 |
 | `volume_mask_margin_um` | 50 | decision 9 |
@@ -276,7 +280,8 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - The viewer shows pure white as transparent (decision 10).
 
 **C12 Acceptance and failure rules per pair.**
-- **`features`:** pass-2 inliers ≥ `reg_min_inliers`, rms ≤ `reg_max_rms_um`, **and** mask IoU of the result ≥ `boundary_min_iou`. The last condition was added in M3-07: without it, an unrelated pair was accepted with 47 consistent but spurious matches (scale 0.39, IoU 0.09). Real pairs 1 to 10 all pass (lowest IoU 0.838).
+- **`features`:** pass-2 inliers ≥ `reg_min_inliers`, rms ≤ `reg_max_rms_um`, **and** mask IoU of the result ≥ `boundary_min_iou`. The last condition was added in M3-07: without it, an unrelated pair was accepted with 47 consistent but spurious matches (scale 0.39, IoU 0.09). Real pairs 1 to 10 all pass (lowest IoU 0.825).
+  - **and** (added in M3-08) the masked correlation of the result is at least that of the outline estimate minus `reg_ncc_tolerance`. On real pair 4→5 the method once drifted to a precise fit of one region of the unevenly deformed section (−12.7°, correlation 0.246 against 0.284 for the outline estimate); the IoU check alone let it pass (0.811). Together with the narrower pass-1 window (1 mm instead of 2.5 mm, pass 1 run twice) the pair now registers at +3.3°, in line with the spike.
 - **`boundary`:** otherwise, outline alignment (iterative closest point on the two tissue outlines, similarity, starting from the boundary estimate) is used if its mask IoU ≥ `boundary_min_iou`.
 - **`failed`:** neither passes. `register` stops at the failed pair and reports it; no chained transform is written past it. A wrong transform is never accepted silently.
 - QC separately flags pairs whose mask Dice is below `qc_min_dice`.
