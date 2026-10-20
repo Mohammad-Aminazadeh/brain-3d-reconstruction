@@ -62,6 +62,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 13. **Coarse-to-fine registration:** 64x for the first pass and 32x for the second, both from the same 32x read (owner, 2026-10-20).
 14. **Detached tissue fragments count as tissue** and are kept (owner, 2026-10-20). Masks keep every component above a small absolute size (debris specks are below 0.2 mm²) and include pale tissue connected to clearly stained tissue.
 15. **Damaged margins** (folds, tears, compression) may stay hundreds of µm off in the MVP; non-rigid correction comes after the MVP (owner, 2026-10-20).
+16. **Overlapping ripped tissue** (folds and flaps where layers lie on top of each other, recognisable by their darker colour) may be ignored: it need not be included in the mask (owner, 2026-10-20). Not removed explicitly in the MVP.
 
 ## 5. Proposed assumptions awaiting approval
 

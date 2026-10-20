@@ -43,7 +43,7 @@ Conventions that apply to every task (not repeated below):
 | M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | Done | M2-04, M3-00 |
 | M3-02 | Synthetic tissue and similarity-transform generator | tests | Medium | Done | M0-05, M3-00 |
 | M3-03 | Registration image and preprocessing stage | preprocess | Medium | To do | M3-01, M3-04 |
-| M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | To do | M3-00 |
+| M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | Done | M3-00 |
 | M3-05 | `Transform2D` (similarity) model | registration | Medium | Done | M3-00 |
 | M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | Done | M3-02, M3-05 (M3-04 soft) |
 | M3-08 | Chain and register a slice range | registration | Low | To do | M3-07, M3-01, M3-03, M3-04 |
@@ -373,13 +373,20 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Acceptance:** reads one whole 32x level (no level-0 access); output sizes equal the level size; metadata per C4; zero outside the mask; second run skips done slices.
 - **Tests:** `tests/unit/test_preprocess.py` with `FakeSlide` (size, inversion, zero background, metadata, reads only the requested level, resume).
 
-#### M3-04 Tissue mask · Medium · To do
+#### M3-04 Tissue mask · Medium · Done
 - **Objective:** Define what counts as tissue for every later stage (F12): registration, QC and the volume ignore everything outside the mask.
 - **Inputs:** RGB image at 32x and its µm per pixel. **Outputs:** `make_mask(rgb, um_per_px, cfg)`: uint8 {0, 255}, same shape (contract C4).
 - **Method:** Otsu on blurred HSV saturation with hysteresis (`mask_hysteresis`, pale tissue connected to stained tissue is kept), close about 100 µm, open about 35 µm, fill holes, keep **every** component of at least `mask_min_component_mm2` (detached fragments kept, decision 14; debris specks dropped).
 - **Depends on:** M3-00. **Files:** `src/brainrec/preprocess/mask.py`, `src/brainrec/catalog/config.py` (mask fields of C9).
 - **Acceptance:** on synthetic data: Dice at least 0.95, tissue recall at least 0.99, fragments kept, specks excluded, holes filled. On real slices 1 to 10 (contact sheet, owner check): the pale fragments at the left of slices 6 to 10 are inside the mask; scan-edge streaks are not.
 - **Tests:** `tests/unit/test_mask.py` (Dice, recall, fragments kept, specks dropped, holes filled, hysteresis keeps a pale region attached to stained tissue but not an isolated pale patch).
+- **Result (2026-10-20):** `src/brainrec/preprocess/mask.py`; mask fields of C9 in `ProjectConfig`; 13 tests.
+  - **Synthetic data (10 seeds):** Dice 0.996, recall 0.996, fragments kept, no debris, exactly 3 components each time.
+  - **Real slices 1 to 10:** compared with the spike masks, the new masks only add tissue (4 to 20 mm² per slice, mostly the fragments of slices 6 to 10) and remove none. Contact sheet: `spike/mask_contact_sheet.png` on My Passport.
+  - **Fixed during the task:**
+    - Colour is now measured as chroma instead of HSV saturation: saturation turned the black scanner edge of slice 10 into tissue.
+    - The threshold never drops below 15: an image of pure glass otherwise became 100% tissue.
+  - **Owner check (2026-10-20):** fragments of slices 6 to 10 correctly inside; nothing outside the tissue outlined; the pale patch next to the fold flap of slice 3 is correctly excluded. Owner decision: ripped tissue lying in overlapping layers (folds and flaps, darker than the rest) may be ignored and need not be included. The mask currently keeps such flaps when attached or larger than 0.25 mm²; this is acceptable, and explicit fold removal is not planned for the MVP.
 
 ### Component: registration
 

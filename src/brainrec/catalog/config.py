@@ -25,6 +25,10 @@ class ProjectConfig(BaseModel):
     reg_max_rms_um: float = 25.0
     boundary_min_iou: float = 0.80
 
+    # tissue mask (contract C4, C9; decision 14: detached fragments are tissue)
+    mask_hysteresis: float = 0.75  # pale pixels >= this x threshold count if connected to tissue
+    mask_min_component_mm2: float = 0.25  # smaller pieces are debris (specks are below 0.2 mm²)
+
     @classmethod
     def load(cls, path: Path) -> "ProjectConfig":
         return cls(**yaml.safe_load(path.read_text()))

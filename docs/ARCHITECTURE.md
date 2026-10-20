@@ -115,7 +115,7 @@ class ProjectConfig:                   # data_dir, work_dir, z_spacing_um, base_
 # Voxel size is not on Catalog (as first drafted): x/y come from the slides' mpp, z from ProjectConfig.
 
 # preprocess                         # M3 (contracts C1, C4, C9)
-make_mask(rgb: ndarray, um_per_px: float, cfg: ProjectConfig) -> ndarray
+make_mask(rgb: ndarray, um_per_px: float, cfg: ProjectConfig) -> ndarray   # implemented (M3-04)
     # uint8 {0,255}; defines "tissue" (F12): saturation threshold with hysteresis, fragments kept
 make_reg_image(rgb: ndarray, mask: ndarray) -> ndarray
     # uint8: 255 - luminance, CLAHE, 0 outside the mask
@@ -217,7 +217,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 **C4 Preprocessing files.**
 - **Read:** one read of the 32x level per slice (`reg_downsample`).
 - **`mask/{id}.png`:** uint8 {0, 255}, 255 = tissue. Rule:
-  1. Otsu on blurred HSV saturation, with hysteresis: pixels at ≥ `mask_hysteresis` × threshold count as tissue if they connect to pixels at or above the threshold. This keeps pale tissue.
+  1. Otsu on blurred **chroma** (max − min of R, G, B; chosen in M3-04 instead of HSV saturation, which explodes on near-black pixels and turned the black scanner edge of slice 10 into "tissue"), never below 15 (Otsu always splits, even an image of pure glass), with hysteresis: pixels at ≥ `mask_hysteresis` × threshold count as tissue if they connect to pixels at or above the threshold. This keeps pale tissue.
   2. Close (about 100 µm), then open (about 35 µm), then fill holes.
   3. Keep **every** component of at least `mask_min_component_mm2`, so detached fragments are kept (decision 14); debris specks are smaller than 0.2 mm².
 - **`reg/{id}.png`:** uint8, 255 minus luminance, with the background set to 0 **before** CLAHE (clip 2.0, 8x8 tiles) and again after, so glass and debris cannot influence the contrast inside the tissue (refined in M3-07, where a debris-invariance test caught it). The 64x image for pass 1 is derived in memory by 2x area downsampling and not stored.
