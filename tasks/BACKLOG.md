@@ -40,7 +40,7 @@ Conventions that apply to every task (not repeated below):
 | M2-11 | Close M2 test gaps (config, CLI) | tests | Low | To do | M2-08 |
 | M3-06 | **Real-data spike: orientation, tissue masks, feature matching (first M3 task)** | integration | Medium | Done | none |
 | M3-00 | Registration contracts (C1 to C12) | docs | Low | Done (approved 2026-10-20) | M3-06 |
-| M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | To do | M2-04, M3-00 |
+| M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | Done | M2-04, M3-00 |
 | M3-02 | Synthetic tissue and similarity-transform generator | tests | Medium | Done | M0-05, M3-00 |
 | M3-03 | Registration image and preprocessing stage | preprocess | Medium | To do | M3-01, M3-04 |
 | M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | To do | M3-00 |
@@ -338,12 +338,13 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: store
 
-#### M3-01 Work-dir layout for reg, mask, transforms, qc · Low · To do
+#### M3-01 Work-dir layout for reg, mask, transforms, qc · Low · Done
 - **Objective:** Define every MVP output path in one place before the stages that write them.
 - **Outputs:** `WorkDir.reg_image(id)`, `.reg_meta(id)`, `.mask(id)`, `.pair_transform(id)`, `.chained_transform(id)`, `.qc_report`, `.qc_overlay(id)`.
 - **Depends on:** M2-04, M3-00. **Files:** `src/brainrec/store/layout.py`, `docs/ARCHITECTURE.md` (layout section).
 - **Acceptance:** all paths under `root`; names stable and documented.
 - **Tests:** `tests/unit/test_layout.py` (paths, no collisions between ids).
+- **Result (2026-10-20):** `WorkDir` extended with all MVP paths per C4, C5 and C10, plus directory properties and a guard that rejects non-positive or non-integer ids; 9 tests (names, all under root, no collisions over 140 ids and 6 kinds, invalid ids).
 
 ### Component: tests
 

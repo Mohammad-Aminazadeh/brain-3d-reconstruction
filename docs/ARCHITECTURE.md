@@ -149,6 +149,10 @@ apply_override(...)                                      # post-MVP
 
 # store                              # implemented (M2)
 WorkDir(root).manifest, .volume        # the only place that knows file names
+    .reg_image(id), .reg_meta(id), .mask(id)                 # implemented (M3-01), C4
+    .pair_transform(k), .chained_transform(id)               # implemented (M3-01), C5
+    .qc_report, .qc_overlay(k); .reg_dir, .mask_dir, .transforms_dir, .qc_dir   # (M3-01), C10
+    # ids must be positive integers; anything else raises ValueError
 Manifest(path).get(key), .set(key, value)   # JSON, atomic write
 
 # volume                             # implemented (M2), without transforms
@@ -306,7 +310,10 @@ Brain 3D Reconstruction/
 └── docs/ (REQUIREMENTS.md, ARCHITECTURE.md, decisions/)
 
 Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
-    reg/ mask/ transforms/ qc/ volume.zarr/ manifest.json
+    manifest.json  volume.zarr/
+    reg/{id}.png  reg/{id}.json  mask/{id}.png
+    transforms/pair_{k}.json  transforms/chained_{k}.json
+    qc/report.json  qc/overlay_{k}.png
 ```
 
 ## 8. Risks and limitations
