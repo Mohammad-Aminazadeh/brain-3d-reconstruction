@@ -322,7 +322,7 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Inputs:** 32x level of slices 1 to 10, read directly with `SlideReader`. **Outputs:** contact sheet with mask outlines; for 4 pairs: match and inlier counts (SIFT vs ORB), residual, rigid vs similarity fit (scale), boundary-only result, mirrored-candidate result, overlay and match picture; findings in `docs/REQUIREMENTS.md` section 7. Details in `tasks/IMPLEMENTATION_PLAN.md` section 6.
 - **Depends on:** none (first task of M3). **Files:** `scripts/spike_registration.py`, `docs/REQUIREMENTS.md`.
 - **Acceptance:** owner has reviewed contact sheet, overlays and match pictures; decisions recorded: mirror needed, rigid or similarity, detector, mask method adequate, 32x adequate, initial inlier and residual thresholds.
-- **Tests:** manual review (throwaway script, writes only to the work dir `spike/`).
+- **Tests:** manual review (throwaway script, writes only to the work dir; outputs now in `results/M3-06_registration_spike/` on the drive, copies in the repository's `results/`).
 - **Result (2026-10-19):** all 9 pairs of slices 1 to 10 (more than the planned 4), plus a guided-matching variant and a 16x/32x/64x comparison on two pairs. Findings and proposed decisions in `docs/REQUIREMENTS.md` section 7 ("Spike results"); decisions are fixed in M3-00.
 - **Owner decisions (2026-10-20):** similarity instead of rigid; guided two-pass ORB matching; coarse-to-fine 64x then 32x; no mirror handling; detached fragments kept as tissue; damaged margins accepted for the MVP (`docs/REQUIREMENTS.md`, confirmed decisions 11 to 15).
 
@@ -382,7 +382,7 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Tests:** `tests/unit/test_mask.py` (Dice, recall, fragments kept, specks dropped, holes filled, hysteresis keeps a pale region attached to stained tissue but not an isolated pale patch).
 - **Result (2026-10-20):** `src/brainrec/preprocess/mask.py`; mask fields of C9 in `ProjectConfig`; 13 tests.
   - **Synthetic data (10 seeds):** Dice 0.996, recall 0.996, fragments kept, no debris, exactly 3 components each time.
-  - **Real slices 1 to 10:** compared with the spike masks, the new masks only add tissue (4 to 20 mm² per slice, mostly the fragments of slices 6 to 10) and remove none. Contact sheet: `spike/mask_contact_sheet.png` on My Passport.
+  - **Real slices 1 to 10:** compared with the spike masks, the new masks only add tissue (4 to 20 mm² per slice, mostly the fragments of slices 6 to 10) and remove none. Contact sheet: `results/M3-04_tissue_masks/mask_contact_sheet.png` on My Passport (copy in the repository's `results/`).
   - **Fixed during the task:**
     - Colour is now measured as chroma instead of HSV saturation: saturation turned the black scanner edge of slice 10 into tissue.
     - The threshold never drops below 15: an image of pure glass otherwise became 100% tissue.

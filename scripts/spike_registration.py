@@ -1,7 +1,7 @@
 """M3-06 spike: orientation, tissue masks and feature matching on real slices.
 
 Throwaway script (not part of the package, no unit tests). Reads only one coarse pyramid level
-of each slice (read-only) and writes only to <work_dir>/spike/.
+of each slice (read-only) and writes only to <work_dir>/results/M3-06_registration_spike/.
 
     python scripts/spike_registration.py --config config/project.yaml --slices 1-10
 
@@ -344,7 +344,7 @@ def main() -> None:
     cfg = ProjectConfig.load(args.config)
     lo, hi = (int(v) for v in args.slices.split("-"))
     refs = Catalog.scan(cfg.data_dir, (lo, hi)).slices
-    out = cfg.work_dir / "spike"
+    out = cfg.work_dir / "results" / "M3-06_registration_spike"
     out.mkdir(parents=True, exist_ok=True)
 
     t0 = time.perf_counter()

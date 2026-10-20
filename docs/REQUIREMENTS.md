@@ -103,7 +103,7 @@ Measured on 2026-10-19 on the real files in `/Volumes/My Passport/3D FCD Alignme
 
 ### Spike results (M3-06, 2026-10-19, `scripts/spike_registration.py`, slices 1 to 10, all 9 neighbouring pairs)
 
-Outputs in `/Volumes/My Passport/3D Brain Reconstruction/spike/` (29 files, 99 MB): `contact_sheet.png`, `overlay_<k>.png` and `matches_<k>.png` (global matching), `overlay_guided_<k>.png` (guided matching), `results.json`. Sources were only read (32x level; 16x and 64x for one comparison).
+Outputs (moved on 2026-10-20 for presentation) in `/Volumes/My Passport/3D Brain Reconstruction/results/M3-06_registration_spike/` (29 files, 84 MB); compressed copies in the repository under `results/` (see `results/README.md`): `contact_sheet.png`, `overlay_<k>.png` and `matches_<k>.png` (global matching), `overlay_guided_<k>.png` (guided matching), `results.json`. Sources were only read (32x level; 16x and 64x for one comparison).
 
 - **Orientation (R7):** no mirrored slices among 1 to 10. Visually consistent orientation; strong pairs give 42 to 186 inliers normally against 3 to 10 when mirrored. Rotations between neighbours are small (0.7° to 5°).
 - **Tissue masks (R9):** Otsu on colour saturation plus cleanup gives one tissue region per slice, 370 to 427 mm². Scan-edge streaks and most debris are excluded; folds are included. Pale detached fragments at the left of slices 6 to 10 were excluded; owner decision: keep them (decision 14). Cause: fragments of 0.6 to 2.8 mm² pass the threshold but were removed by the 1%-of-tissue rule (about 4.2 mm²), and their pale parts lie at the Otsu threshold (saturation about 18; glass 9 to 10, tissue 27 to 30).

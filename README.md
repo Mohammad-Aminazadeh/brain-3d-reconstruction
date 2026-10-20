@@ -66,6 +66,7 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 - [docs/MVP.md](docs/MVP.md): MVP scope, acceptance criteria and milestones.
 - [tasks/BACKLOG.md](tasks/BACKLOG.md): work breakdown with task status.
 - [tasks/IMPLEMENTATION_PLAN.md](tasks/IMPLEMENTATION_PLAN.md): order of implementation, critical path, contracts.
+- [results/](results/README.md): result figures for presentations (compressed copies; originals on the work drive).
 - [docs/decisions/](docs/decisions/): decision records (storage format, local viewer, tissue-only feature-based registration).
 
 ## Data

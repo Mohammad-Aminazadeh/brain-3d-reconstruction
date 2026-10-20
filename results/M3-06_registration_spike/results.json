@@ -1,0 +1,1081 @@
+{
+  "slices": [
+    {
+      "id": 1,
+      "size_px": [
+        4368,
+        3192
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.561,
+      "tissue_area_mm2": 389.6,
+      "components": 1
+    },
+    {
+      "id": 2,
+      "size_px": [
+        4256,
+        3024
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.616,
+      "tissue_area_mm2": 394.4,
+      "components": 1
+    },
+    {
+      "id": 3,
+      "size_px": [
+        4480,
+        3192
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.549,
+      "tissue_area_mm2": 390.7,
+      "components": 1
+    },
+    {
+      "id": 4,
+      "size_px": [
+        4480,
+        3192
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.549,
+      "tissue_area_mm2": 391.1,
+      "components": 1
+    },
+    {
+      "id": 5,
+      "size_px": [
+        4368,
+        2856
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.595,
+      "tissue_area_mm2": 369.6,
+      "components": 1
+    },
+    {
+      "id": 6,
+      "size_px": [
+        4592,
+        3192
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.585,
+      "tissue_area_mm2": 427.0,
+      "components": 1
+    },
+    {
+      "id": 7,
+      "size_px": [
+        4592,
+        3024
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.599,
+      "tissue_area_mm2": 414.0,
+      "components": 1
+    },
+    {
+      "id": 8,
+      "size_px": [
+        4704,
+        3192
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.568,
+      "tissue_area_mm2": 424.6,
+      "components": 1
+    },
+    {
+      "id": 9,
+      "size_px": [
+        4704,
+        3192
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.569,
+      "tissue_area_mm2": 425.4,
+      "components": 1
+    },
+    {
+      "id": 10,
+      "size_px": [
+        4592,
+        3360
+      ],
+      "um_per_px": 7.055,
+      "tissue_fraction": 0.551,
+      "tissue_area_mm2": 423.3,
+      "components": 1
+    }
+  ],
+  "pairs": [
+    {
+      "fixed": 1,
+      "moving": 2,
+      "boundary": {
+        "iou": 0.9416,
+        "angle_deg": -3.92
+      },
+      "sift": {
+        "matches": 238,
+        "inliers": 12,
+        "inlier_ratio": 0.05,
+        "angle_deg": -2.589,
+        "shift_um": [
+          -1071.1,
+          1537.7
+        ],
+        "scale": 1.02528,
+        "rms_rigid_um": 128.1,
+        "rms_similarity_um": 13.13,
+        "keypoints": [
+          48980,
+          48388
+        ],
+        "seconds": 2.3
+      },
+      "orb": {
+        "matches": 535,
+        "inliers": 42,
+        "inlier_ratio": 0.079,
+        "angle_deg": -2.496,
+        "shift_um": [
+          -1083.0,
+          1520.8
+        ],
+        "scale": 1.02437,
+        "rms_rigid_um": 127.74,
+        "rms_similarity_um": 14.77,
+        "keypoints": [
+          46997,
+          46667
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 4,
+      "guided_sift": {
+        "matches": 2287,
+        "inliers": 122,
+        "inlier_ratio": 0.053,
+        "angle_deg": -3.708,
+        "shift_um": [
+          -1326.5,
+          1904.3
+        ],
+        "scale": 1.00263,
+        "rms_rigid_um": 24.92,
+        "rms_similarity_um": 18.08,
+        "pass1_inliers": 19,
+        "seconds": 6.7
+      },
+      "guided_orb": {
+        "matches": 3237,
+        "inliers": 299,
+        "inlier_ratio": 0.092,
+        "angle_deg": -3.942,
+        "shift_um": [
+          -1387.1,
+          1954.0
+        ],
+        "scale": 1.00098,
+        "rms_rigid_um": 18.02,
+        "rms_similarity_um": 17.25,
+        "pass1_inliers": 81,
+        "seconds": 4.9
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.952,
+      "best": "orb",
+      "overlay_iou": 0.9448,
+      "boundary_vs_features": {
+        "angle_diff_deg": 1.42,
+        "centroid_diff_um": 184.6
+      },
+      "scale_edge_displacement_um": 382.7,
+      "seconds": 17.6
+    },
+    {
+      "fixed": 2,
+      "moving": 3,
+      "boundary": {
+        "iou": 0.9167,
+        "angle_deg": -4.29
+      },
+      "sift": {
+        "matches": 267,
+        "inliers": 14,
+        "inlier_ratio": 0.052,
+        "angle_deg": -3.323,
+        "shift_um": [
+          -1102.5,
+          1913.8
+        ],
+        "scale": 1.00314,
+        "rms_rigid_um": 27.2,
+        "rms_similarity_um": 18.8,
+        "keypoints": [
+          47860,
+          48980
+        ],
+        "seconds": 1.9
+      },
+      "orb": {
+        "matches": 519,
+        "inliers": 60,
+        "inlier_ratio": 0.116,
+        "angle_deg": -3.384,
+        "shift_um": [
+          -1092.8,
+          1937.5
+        ],
+        "scale": 0.99805,
+        "rms_rigid_um": 19.42,
+        "rms_similarity_um": 17.89,
+        "keypoints": [
+          46711,
+          46997
+        ],
+        "seconds": 1.4
+      },
+      "mirrored_sift_inliers": 5,
+      "guided_sift": {
+        "matches": 2216,
+        "inliers": 114,
+        "inlier_ratio": 0.051,
+        "angle_deg": -3.301,
+        "shift_um": [
+          -1079.4,
+          1905.3
+        ],
+        "scale": 0.9999,
+        "rms_rigid_um": 17.97,
+        "rms_similarity_um": 17.96,
+        "pass1_inliers": 37,
+        "seconds": 6.7
+      },
+      "guided_orb": {
+        "matches": 3011,
+        "inliers": 332,
+        "inlier_ratio": 0.11,
+        "angle_deg": -3.355,
+        "shift_um": [
+          -1087.4,
+          1925.1
+        ],
+        "scale": 0.99843,
+        "rms_rigid_um": 19.66,
+        "rms_similarity_um": 17.85,
+        "pass1_inliers": 105,
+        "seconds": 4.9
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.9309,
+      "best": "orb",
+      "overlay_iou": 0.9307,
+      "boundary_vs_features": {
+        "angle_diff_deg": 0.91,
+        "centroid_diff_um": 187.9
+      },
+      "scale_edge_displacement_um": 31.0,
+      "seconds": 17.3
+    },
+    {
+      "fixed": 3,
+      "moving": 4,
+      "boundary": {
+        "iou": 0.9012,
+        "angle_deg": 2.05
+      },
+      "sift": {
+        "matches": 181,
+        "inliers": 6,
+        "inlier_ratio": 0.033,
+        "angle_deg": 4.082,
+        "shift_um": [
+          413.4,
+          -2716.8
+        ],
+        "scale": 1.01237,
+        "rms_rigid_um": 99.34,
+        "rms_similarity_um": 14.19,
+        "keypoints": [
+          48816,
+          47860
+        ],
+        "seconds": 1.5
+      },
+      "orb": {
+        "matches": 431,
+        "inliers": 20,
+        "inlier_ratio": 0.046,
+        "angle_deg": 6.763,
+        "shift_um": [
+          678.5,
+          -3803.3
+        ],
+        "scale": 1.02323,
+        "rms_rigid_um": 77.76,
+        "rms_similarity_um": 15.7,
+        "keypoints": [
+          47063,
+          46711
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 4,
+      "guided_sift": {
+        "matches": 1536,
+        "inliers": 31,
+        "inlier_ratio": 0.02,
+        "angle_deg": 0.301,
+        "shift_um": [
+          -252.6,
+          -1321.0
+        ],
+        "scale": 1.02224,
+        "rms_rigid_um": 209.46,
+        "rms_similarity_um": 16.55,
+        "pass1_inliers": 11,
+        "seconds": 6.5
+      },
+      "guided_orb": {
+        "matches": 1948,
+        "inliers": 77,
+        "inlier_ratio": 0.04,
+        "angle_deg": 1.7,
+        "shift_um": [
+          -456.1,
+          -1968.3
+        ],
+        "scale": 1.01266,
+        "rms_rigid_um": 70.26,
+        "rms_similarity_um": 18.63,
+        "pass1_inliers": 27,
+        "seconds": 5.0
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.8904,
+      "best": "orb",
+      "overlay_iou": 0.8323,
+      "boundary_vs_features": {
+        "angle_diff_deg": 4.71,
+        "centroid_diff_um": 901.3
+      },
+      "scale_edge_displacement_um": 371.0,
+      "seconds": 16.5
+    },
+    {
+      "fixed": 4,
+      "moving": 5,
+      "boundary": {
+        "iou": 0.8332,
+        "angle_deg": -5.34
+      },
+      "sift": {
+        "matches": 220,
+        "inliers": 10,
+        "inlier_ratio": 0.045,
+        "angle_deg": 2.881,
+        "shift_um": [
+          622.6,
+          537.9
+        ],
+        "scale": 1.00302,
+        "rms_rigid_um": 22.09,
+        "rms_similarity_um": 14.11,
+        "keypoints": [
+          46343,
+          48816
+        ],
+        "seconds": 1.5
+      },
+      "orb": {
+        "matches": 518,
+        "inliers": 39,
+        "inlier_ratio": 0.075,
+        "angle_deg": 1.1,
+        "shift_um": [
+          313.4,
+          1139.0
+        ],
+        "scale": 0.99709,
+        "rms_rigid_um": 15.58,
+        "rms_similarity_um": 15.01,
+        "keypoints": [
+          46915,
+          47063
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 5,
+      "guided_sift": {
+        "matches": 1213,
+        "inliers": 27,
+        "inlier_ratio": 0.022,
+        "angle_deg": -14.641,
+        "shift_um": [
+          -2465.3,
+          6204.3
+        ],
+        "scale": 0.95578,
+        "rms_rigid_um": 385.47,
+        "rms_similarity_um": 21.02,
+        "pass1_inliers": 12,
+        "seconds": 6.5
+      },
+      "guided_orb": {
+        "matches": 2153,
+        "inliers": 140,
+        "inlier_ratio": 0.065,
+        "angle_deg": 2.795,
+        "shift_um": [
+          607.2,
+          566.6
+        ],
+        "scale": 1.00681,
+        "rms_rigid_um": 36.24,
+        "rms_similarity_um": 18.46,
+        "pass1_inliers": 61,
+        "seconds": 5.1
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.8378,
+      "best": "orb",
+      "overlay_iou": 0.8407,
+      "boundary_vs_features": {
+        "angle_diff_deg": 6.44,
+        "centroid_diff_um": 383.2
+      },
+      "scale_edge_displacement_um": 46.8,
+      "seconds": 16.8
+    },
+    {
+      "fixed": 5,
+      "moving": 6,
+      "boundary": {
+        "iou": 0.8399,
+        "angle_deg": 10.7
+      },
+      "sift": {
+        "matches": 139,
+        "inliers": 4,
+        "inlier_ratio": 0.029,
+        "angle_deg": -101.964,
+        "shift_um": [
+          4879.1,
+          25444.0
+        ],
+        "scale": 0.65441,
+        "rms_rigid_um": 2160.67,
+        "rms_similarity_um": 0.0,
+        "keypoints": [
+          48999,
+          46343
+        ],
+        "seconds": 1.8
+      },
+      "orb": {
+        "matches": 289,
+        "inliers": 11,
+        "inlier_ratio": 0.038,
+        "angle_deg": 4.415,
+        "shift_um": [
+          -456.3,
+          -3372.1
+        ],
+        "scale": 0.92404,
+        "rms_rigid_um": 393.68,
+        "rms_similarity_um": 15.47,
+        "keypoints": [
+          46169,
+          46915
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 4,
+      "guided_sift": {
+        "matches": 1254,
+        "inliers": 24,
+        "inlier_ratio": 0.019,
+        "angle_deg": 5.932,
+        "shift_um": [
+          -787.6,
+          -2589.8
+        ],
+        "scale": 0.87403,
+        "rms_rigid_um": 1140.02,
+        "rms_similarity_um": 16.86,
+        "pass1_inliers": 11,
+        "seconds": 6.5
+      },
+      "guided_orb": {
+        "matches": 1657,
+        "inliers": 62,
+        "inlier_ratio": 0.037,
+        "angle_deg": 4.268,
+        "shift_um": [
+          -389.0,
+          -3283.3
+        ],
+        "scale": 0.90976,
+        "rms_rigid_um": 241.73,
+        "rms_similarity_um": 17.66,
+        "pass1_inliers": 16,
+        "seconds": 4.9
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.8425,
+      "best": "orb",
+      "overlay_iou": 0.8302,
+      "boundary_vs_features": {
+        "angle_diff_deg": 6.28,
+        "centroid_diff_um": 238.8
+      },
+      "scale_edge_displacement_um": 1299.3,
+      "seconds": 16.6
+    },
+    {
+      "fixed": 6,
+      "moving": 7,
+      "boundary": {
+        "iou": 0.9319,
+        "angle_deg": -4.35
+      },
+      "sift": {
+        "matches": 225,
+        "inliers": 58,
+        "inlier_ratio": 0.258,
+        "angle_deg": -4.804,
+        "shift_um": [
+          1.4,
+          2822.1
+        ],
+        "scale": 1.00269,
+        "rms_rigid_um": 23.17,
+        "rms_similarity_um": 15.0,
+        "keypoints": [
+          49070,
+          48999
+        ],
+        "seconds": 1.7
+      },
+      "orb": {
+        "matches": 526,
+        "inliers": 186,
+        "inlier_ratio": 0.354,
+        "angle_deg": -4.848,
+        "shift_um": [
+          -13.9,
+          2839.4
+        ],
+        "scale": 1.00281,
+        "rms_rigid_um": 22.87,
+        "rms_similarity_um": 16.21,
+        "keypoints": [
+          46457,
+          46169
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 4,
+      "guided_sift": {
+        "matches": 2306,
+        "inliers": 291,
+        "inlier_ratio": 0.126,
+        "angle_deg": -4.952,
+        "shift_um": [
+          -34.6,
+          2894.8
+        ],
+        "scale": 1.00152,
+        "rms_rigid_um": 20.26,
+        "rms_similarity_um": 16.71,
+        "pass1_inliers": 114,
+        "seconds": 6.7
+      },
+      "guided_orb": {
+        "matches": 3360,
+        "inliers": 792,
+        "inlier_ratio": 0.236,
+        "angle_deg": -4.972,
+        "shift_um": [
+          -31.2,
+          2894.6
+        ],
+        "scale": 1.00367,
+        "rms_rigid_um": 29.54,
+        "rms_similarity_um": 17.03,
+        "pass1_inliers": 402,
+        "seconds": 5.0
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.9572,
+      "best": "orb",
+      "overlay_iou": 0.9551,
+      "boundary_vs_features": {
+        "angle_diff_deg": 0.5,
+        "centroid_diff_um": 211.3
+      },
+      "scale_edge_displacement_um": 49.5,
+      "seconds": 16.8
+    },
+    {
+      "fixed": 7,
+      "moving": 8,
+      "boundary": {
+        "iou": 0.9349,
+        "angle_deg": -2.1
+      },
+      "sift": {
+        "matches": 152,
+        "inliers": 17,
+        "inlier_ratio": 0.112,
+        "angle_deg": -1.365,
+        "shift_um": [
+          -798.4,
+          -386.3
+        ],
+        "scale": 0.99314,
+        "rms_rigid_um": 33.43,
+        "rms_similarity_um": 12.64,
+        "keypoints": [
+          48983,
+          49070
+        ],
+        "seconds": 2.0
+      },
+      "orb": {
+        "matches": 369,
+        "inliers": 60,
+        "inlier_ratio": 0.163,
+        "angle_deg": -1.174,
+        "shift_um": [
+          -772.9,
+          -449.6
+        ],
+        "scale": 0.99464,
+        "rms_rigid_um": 25.75,
+        "rms_similarity_um": 15.82,
+        "keypoints": [
+          46148,
+          46457
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 4,
+      "guided_sift": {
+        "matches": 1226,
+        "inliers": 28,
+        "inlier_ratio": 0.023,
+        "angle_deg": -1.732,
+        "shift_um": [
+          -1302.1,
+          311.7
+        ],
+        "scale": 0.90126,
+        "rms_rigid_um": 807.24,
+        "rms_similarity_um": 18.59,
+        "pass1_inliers": 11,
+        "seconds": 6.7
+      },
+      "guided_orb": {
+        "matches": 2443,
+        "inliers": 263,
+        "inlier_ratio": 0.108,
+        "angle_deg": -1.269,
+        "shift_um": [
+          -782.6,
+          -415.4
+        ],
+        "scale": 0.9941,
+        "rms_rigid_um": 38.98,
+        "rms_similarity_um": 17.77,
+        "pass1_inliers": 68,
+        "seconds": 4.9
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.9558,
+      "best": "orb",
+      "overlay_iou": 0.9535,
+      "boundary_vs_features": {
+        "angle_diff_deg": 0.93,
+        "centroid_diff_um": 219.6
+      },
+      "scale_edge_displacement_um": 92.2,
+      "seconds": 17.5
+    },
+    {
+      "fixed": 8,
+      "moving": 9,
+      "boundary": {
+        "iou": 0.976,
+        "angle_deg": -0.89
+      },
+      "sift": {
+        "matches": 237,
+        "inliers": 58,
+        "inlier_ratio": 0.245,
+        "angle_deg": -0.698,
+        "shift_um": [
+          75.2,
+          320.4
+        ],
+        "scale": 0.99803,
+        "rms_rigid_um": 20.28,
+        "rms_similarity_um": 14.73,
+        "keypoints": [
+          48913,
+          48983
+        ],
+        "seconds": 1.5
+      },
+      "orb": {
+        "matches": 518,
+        "inliers": 157,
+        "inlier_ratio": 0.303,
+        "angle_deg": -0.67,
+        "shift_um": [
+          82.4,
+          309.2
+        ],
+        "scale": 0.99798,
+        "rms_rigid_um": 21.19,
+        "rms_similarity_um": 16.38,
+        "keypoints": [
+          45770,
+          46148
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 4,
+      "guided_sift": {
+        "matches": 1370,
+        "inliers": 42,
+        "inlier_ratio": 0.031,
+        "angle_deg": -0.602,
+        "shift_um": [
+          108.9,
+          272.2
+        ],
+        "scale": 0.99757,
+        "rms_rigid_um": 12.9,
+        "rms_similarity_um": 11.35,
+        "pass1_inliers": 16,
+        "seconds": 6.7
+      },
+      "guided_orb": {
+        "matches": 3331,
+        "inliers": 882,
+        "inlier_ratio": 0.265,
+        "angle_deg": -0.654,
+        "shift_um": [
+          92.3,
+          303.6
+        ],
+        "scale": 0.99734,
+        "rms_rigid_um": 25.81,
+        "rms_similarity_um": 15.99,
+        "pass1_inliers": 395,
+        "seconds": 4.9
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.977,
+      "best": "orb",
+      "overlay_iou": 0.9765,
+      "boundary_vs_features": {
+        "angle_diff_deg": 0.22,
+        "centroid_diff_um": 34.2
+      },
+      "scale_edge_displacement_um": 34.9,
+      "seconds": 16.8
+    },
+    {
+      "fixed": 9,
+      "moving": 10,
+      "boundary": {
+        "iou": 0.9724,
+        "angle_deg": -3.63
+      },
+      "sift": {
+        "matches": 233,
+        "inliers": 41,
+        "inlier_ratio": 0.176,
+        "angle_deg": -3.943,
+        "shift_um": [
+          156.6,
+          455.1
+        ],
+        "scale": 1.00528,
+        "rms_rigid_um": 31.95,
+        "rms_similarity_um": 14.76,
+        "keypoints": [
+          49080,
+          48913
+        ],
+        "seconds": 2.0
+      },
+      "orb": {
+        "matches": 552,
+        "inliers": 151,
+        "inlier_ratio": 0.274,
+        "angle_deg": -4.067,
+        "shift_um": [
+          127.9,
+          496.1
+        ],
+        "scale": 1.00419,
+        "rms_rigid_um": 25.64,
+        "rms_similarity_um": 15.13,
+        "keypoints": [
+          45904,
+          45770
+        ],
+        "seconds": 1.5
+      },
+      "mirrored_sift_inliers": 5,
+      "guided_sift": {
+        "matches": 2211,
+        "inliers": 253,
+        "inlier_ratio": 0.114,
+        "angle_deg": -4.166,
+        "shift_um": [
+          95.5,
+          541.1
+        ],
+        "scale": 1.00402,
+        "rms_rigid_um": 29.29,
+        "rms_similarity_um": 15.6,
+        "pass1_inliers": 79,
+        "seconds": 6.7
+      },
+      "guided_orb": {
+        "matches": 3239,
+        "inliers": 621,
+        "inlier_ratio": 0.192,
+        "angle_deg": -4.14,
+        "shift_um": [
+          111.2,
+          526.3
+        ],
+        "scale": 1.00515,
+        "rms_rigid_um": 33.52,
+        "rms_similarity_um": 16.57,
+        "pass1_inliers": 270,
+        "seconds": 4.9
+      },
+      "guided_best": "orb",
+      "guided_overlay_iou": 0.9732,
+      "best": "orb",
+      "overlay_iou": 0.9721,
+      "boundary_vs_features": {
+        "angle_diff_deg": 0.44,
+        "centroid_diff_um": 2.8
+      },
+      "scale_edge_displacement_um": 71.8,
+      "seconds": 17.3
+    }
+  ],
+  "level_comparison": [
+    {
+      "pair": "1<-2",
+      "downsample": 16,
+      "sift_global": {
+        "matches": 225,
+        "inliers": 5,
+        "angle_deg": -9.69,
+        "scale": 0.87326,
+        "rms_similarity_um": 3.35
+      },
+      "sift_guided": {
+        "matches": 1401,
+        "inliers": 14,
+        "angle_deg": -12.472,
+        "scale": 0.91881,
+        "rms_similarity_um": 8.85
+      },
+      "orb_global": {
+        "matches": 519,
+        "inliers": 21,
+        "angle_deg": -4.012,
+        "scale": 1.00234,
+        "rms_similarity_um": 7.46
+      },
+      "orb_guided": {
+        "matches": 3168,
+        "inliers": 102,
+        "angle_deg": -3.709,
+        "scale": 1.00173,
+        "rms_similarity_um": 9.01
+      },
+      "seconds": 31.1
+    },
+    {
+      "pair": "1<-2",
+      "downsample": 32,
+      "sift_global": {
+        "matches": 217,
+        "inliers": 11,
+        "angle_deg": -2.545,
+        "scale": 1.02477,
+        "rms_similarity_um": 11.53
+      },
+      "sift_guided": {
+        "matches": 1974,
+        "inliers": 90,
+        "angle_deg": -3.718,
+        "scale": 1.00311,
+        "rms_similarity_um": 16.0
+      },
+      "orb_global": {
+        "matches": 535,
+        "inliers": 42,
+        "angle_deg": -2.496,
+        "scale": 1.02437,
+        "rms_similarity_um": 14.77
+      },
+      "orb_guided": {
+        "matches": 3237,
+        "inliers": 299,
+        "angle_deg": -3.942,
+        "scale": 1.00098,
+        "rms_similarity_um": 17.25
+      },
+      "seconds": 16.7
+    },
+    {
+      "pair": "1<-2",
+      "downsample": 64,
+      "sift_global": {
+        "matches": 99,
+        "inliers": 18,
+        "angle_deg": -3.723,
+        "scale": 1.00745,
+        "rms_similarity_um": 32.27
+      },
+      "sift_guided": {
+        "matches": 508,
+        "inliers": 79,
+        "angle_deg": -3.373,
+        "scale": 0.99649,
+        "rms_similarity_um": 33.53
+      },
+      "orb_global": {
+        "matches": 513,
+        "inliers": 99,
+        "angle_deg": -3.826,
+        "scale": 1.00452,
+        "rms_similarity_um": 32.66
+      },
+      "orb_guided": {
+        "matches": 2727,
+        "inliers": 544,
+        "angle_deg": -3.283,
+        "scale": 0.99774,
+        "rms_similarity_um": 35.74
+      },
+      "seconds": 5.5
+    },
+    {
+      "pair": "5<-6",
+      "downsample": 16,
+      "sift_global": {
+        "matches": 161,
+        "inliers": 4,
+        "angle_deg": -127.964,
+        "scale": 1.18418,
+        "rms_similarity_um": 0.0
+      },
+      "sift_guided": {
+        "matches": 1633,
+        "inliers": 15,
+        "angle_deg": 7.859,
+        "scale": 0.81191,
+        "rms_similarity_um": 8.59
+      },
+      "orb_global": {
+        "matches": 334,
+        "inliers": 5,
+        "angle_deg": 4.097,
+        "scale": 0.91935,
+        "rms_similarity_um": 4.61
+      },
+      "orb_guided": {
+        "matches": 1535,
+        "inliers": 22,
+        "angle_deg": 5.605,
+        "scale": 0.86844,
+        "rms_similarity_um": 7.97
+      },
+      "seconds": 30.1
+    },
+    {
+      "pair": "5<-6",
+      "downsample": 32,
+      "sift_global": {
+        "matches": 129,
+        "inliers": 4,
+        "angle_deg": 3.779,
+        "scale": 0.99094,
+        "rms_similarity_um": 0.0
+      },
+      "sift_guided": {
+        "matches": 1394,
+        "inliers": 28,
+        "angle_deg": 9.08,
+        "scale": 0.88583,
+        "rms_similarity_um": 18.24
+      },
+      "orb_global": {
+        "matches": 289,
+        "inliers": 11,
+        "angle_deg": 4.415,
+        "scale": 0.92404,
+        "rms_similarity_um": 15.47
+      },
+      "orb_guided": {
+        "matches": 1657,
+        "inliers": 62,
+        "angle_deg": 4.268,
+        "scale": 0.90976,
+        "rms_similarity_um": 17.66
+      },
+      "seconds": 17.2
+    },
+    {
+      "pair": "5<-6",
+      "downsample": 64,
+      "sift_global": {
+        "matches": 55,
+        "inliers": 6,
+        "angle_deg": 4.359,
+        "scale": 0.92704,
+        "rms_similarity_um": 18.64
+      },
+      "sift_guided": {
+        "matches": 209,
+        "inliers": 26,
+        "angle_deg": 9.947,
+        "scale": 0.97051,
+        "rms_similarity_um": 37.1
+      },
+      "orb_global": {
+        "matches": 187,
+        "inliers": 15,
+        "angle_deg": 9.633,
+        "scale": 0.97299,
+        "rms_similarity_um": 29.34
+      },
+      "orb_guided": {
+        "matches": 1124,
+        "inliers": 108,
+        "angle_deg": 8.871,
+        "scale": 0.95768,
+        "rms_similarity_um": 39.27
+      },
+      "seconds": 4.2
+    }
+  ]
+}

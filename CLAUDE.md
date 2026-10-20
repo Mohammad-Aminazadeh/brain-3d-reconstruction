@@ -21,7 +21,7 @@ Reconstruct a 3D volume from 140 ultra-high-resolution NDPI brain slices (about 
 
 - Never modify, move or delete source NDPI files (the sample in `Data Sample/` and everything on "My Passport").
 - Never load a full slice at full resolution; use pyramid levels or tiles.
-- Write generated data only to the configured work directory, never into the repository.
+- Write generated data only to the configured work directory, never into the repository. Exception (owner, 2026-10-20): curated result figures for presentations go to the work drive's `results/<task>/` at full resolution and, as compressed copies (JPEG, same pixel size), to the repository's `results/<task>/`, each described in `results/README.md`. Never volumes, masks or other bulk data.
 - Do not read all 140 files in tests. Tests use synthetic data or small crops.
 - Check free disk space before writing large outputs (internal disk has about 26 GB free).
 - The work drive is exFAT with 512 KB blocks and macOS adds a `._` file per written file: keep the number of output files low (shards, not one file per chunk).
