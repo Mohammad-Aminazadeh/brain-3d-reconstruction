@@ -47,7 +47,7 @@ Conventions that apply to every task (not repeated below):
 | M3-05 | `Transform2D` (similarity) model | registration | Medium | Done | M3-00 |
 | M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | Done | M3-02, M3-05 (M3-04 soft) |
 | M3-08 | Chain and register a slice range | registration | Low | Done | M3-07, M3-01, M3-03, M3-04 |
-| M3-09 | Volume builder with transforms, tissue only | volume | High | To do | M3-05, M2-05 (M3-04 soft) |
+| M3-09 | Volume builder with transforms, tissue only | volume | High | Done | M3-05, M2-05 (M3-04 soft) |
 | M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | To do | M3-08, M3-09, M2-11 |
 | M3-12 | Transparent background in the viewer | serve | Low | To do | M3-09 |
 | M3-11 | Real registration, slices 1 to 10 | integration | Medium | To do | M3-10, M3-12, M2-10, M3-06 |
@@ -444,7 +444,7 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: volume
 
-#### M3-09 Volume builder with transforms, tissue only · High · To do
+#### M3-09 Volume builder with transforms, tissue only · High · Done
 - **Objective:** Resample slices through their chained transforms into the pyramid, keeping only tissue (F12).
 - **Inputs:** `Catalog`, chained transforms, tissue masks, `VolumeSpec`. **Outputs:** `volume.zarr` as in M2, registered, tissue only.
 - **Interface change:** `build_volume(..., transforms: dict[int, Transform2D] | None = None, masks: dict[int, Path] | None = None)`; `None` keeps M2 behaviour (centred, whole scan). Consequence: the manifest signature includes hashes of the transforms and masks, so changes trigger the overwrite guard.
@@ -458,6 +458,11 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
   - M3-09f **Tissue masking:** warp each mask with the slice's transform to the tile, enlarge by `volume_mask_margin_um` (50 µm, approved), set voxels outside to the fill value (255, 255, 255) before writing, so all-background chunks are not stored. Tissue voxels that are exactly (255, 255, 255) are stored as (254, 254, 254), so pure white means background unambiguously (C11; needed for the transparent display, M3-12). Test: no non-background voxel outside the enlarged mask; every tissue voxel kept and never pure white; background-only tiles write no chunk.
 - **Acceptance:** with synthetic slices moved by known transforms, the inverse transforms put all markers on one (x, y) across z within 1 px at the base level; AC9 holds on synthetic data (tissue only, nothing cut off).
 - **Tests:** `tests/unit/test_volume_warp.py`; existing `tests/unit/test_volume.py` still passes unchanged.
+- **Result (2026-10-20):**
+  - **Code:** `src/brainrec/volume/warp.py` (new, pure geometry), registered mode in `builder.py` (centred M2 mode unchanged; array creation and resume moved into shared helpers), `VolumeSpec.mask_margin_um`, `ProjectConfig.volume_mask_margin_um`.
+  - **Tests:** 10 new; the 12 M2 tests pass unchanged. Covered: canvas = tissue extent; source box rotated, clipped and bounded; exact pixels under integer translation; markers back in place after 90° and −25° rotations; markers of three moved slices on one (x, y) within 1 px and at the same physical position on all levels (acceptance); tissue only (nothing beyond mask + margin, every tissue voxel kept, pure-white tissue stored as 254, background tiles not stored: AC9 on synthetic data); resume and changed transform or mask needing overwrite; empty mask; invalid inputs.
+  - **Real smoke test** (slices 1 to 10, real chained transforms and masks, base 16x instead of 4x, scratchpad, deleted afterwards): 38 s, 61 shard files (628 MB), about 40% of the canvas background (not stored). A side cut through the central vessel lumens shows them as continuous columns through the slices, no jumps. Estimate for the real 4x build: about 15 to 25 min for slices 1 to 10.
+  - **Consequence:** `VolumeSpec` has a new field, so the existing unregistered M2 volume on the drive no longer resumes. It will be replaced by the registered volume in M3-11 (with overwrite).
 
 ### Component: pipeline
 

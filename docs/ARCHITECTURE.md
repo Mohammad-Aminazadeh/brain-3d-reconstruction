@@ -159,17 +159,24 @@ WorkDir(root).manifest, .volume        # the only place that knows file names
     # ids must be positive integers; anything else raises ValueError
 Manifest(path).get(key), .set(key, value)   # JSON, atomic write
 
-# volume                             # implemented (M2), without transforms
-VolumeSpec(z_spacing_um, base_downsample=4, n_levels=5, chunk_xy=512, shard_xy=4096)
+# volume                             # implemented: centred mode (M2), registered tissue-only mode (M3-09)
+VolumeSpec(z_spacing_um, base_downsample=4, n_levels=5, chunk_xy=512, shard_xy=4096, mask_margin_um=50)
 build_volume(catalog, out: Path, spec: VolumeSpec, manifest: Manifest | None = None,
-             reader_factory=SlideReader.open, overwrite: bool = False) -> Path
-    # M3 adds (contract C8):
-    #   transforms: dict[int, Transform2D] | None = None   (slice -> reference; None = slices centred, as in M2)
-    #   masks: dict[int, Path] | None = None           (tissue only, F12: voxels outside the warped mask
-    #                                                    + margin = fill value 255; canvas = bounding box of
-    #                                                    the transformed tissue, not of the scanned area;
-    #                                                    tissue voxels never pure white: 255 is reserved for background)
-    # Raises VolumeExistsError if `out` exists with other settings and overwrite is False.
+             reader_factory=SlideReader.open, overwrite: bool = False,
+             transforms: dict[int, Transform2D] | None = None,   # slice -> reference (µm), C8
+             masks: dict[int, Path] | None = None) -> Path         # tissue mask PNG per slice, C8
+    # Both None: centred mode (M2). Both given: registered, tissue only (C11):
+    #   - canvas = extent of all transformed masks enlarged by mask_margin_um, aligned to the grid
+    #   - each output tile = one shard, resampled (bilinear) from the slide level of the same
+    #     resolution; tiles without tissue are neither read nor stored
+    #   - outside the enlarged mask: 255 (fill, not stored); tissue never pure white (254)
+    #   - the mask's pyramid level is found by matching its size to a level of the slide
+    # attrs["brainrec"]: mode, slice_ids, reference_slice, canvas_origin_um, mask_margin_um,
+    #   transform_sha256, mask_sha256, slice_to_reference_um
+    # Raises VolumeExistsError if `out` exists from other inputs and overwrite is False; ValueError
+    # if only one of transforms/masks is given or a slice lacks one.
+# volume/warp.py (M3-09): enlarge_mask, outline_corners, tissue_extent_um, source_box, warp_tile,
+#   warp_mask_tile, finish_tile, canvas_tiles (pure geometry, tested without slides)
 
 # serve                              # implemented (M2)
 create_app(root: Path) -> FastAPI      # static files of the work dir, CORS + range requests
@@ -266,7 +273,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 | `reg_ncc_tolerance` | 0.01 | M3-08: feature fit may correlate at most this much worse than the outline estimate |
 | `mask_hysteresis` | 0.75 | to be validated in M3-04 |
 | `mask_min_component_mm2` | 0.25 | spike: fragments 0.6 to 2.8 mm², specks below 0.2 |
-| `volume_mask_margin_um` | 50 | decision 9 |
+| `volume_mask_margin_um` | 50 | decision 9; `VolumeSpec.mask_margin_um` (M3-09) |
 | `qc_min_dice` | 0.90 | spike: flags the damaged pairs 3→4, 4→5, 5→6 |
 | `qc_min_ncc` | none until M4-05 | calibrated on real data |
 

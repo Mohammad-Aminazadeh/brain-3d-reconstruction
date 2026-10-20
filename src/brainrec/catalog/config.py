@@ -32,6 +32,9 @@ class ProjectConfig(BaseModel):
     mask_hysteresis: float = 0.75  # pale pixels >= this x threshold count if connected to tissue
     mask_min_component_mm2: float = 0.25  # smaller pieces are debris (specks are below 0.2 mm²)
 
+    # registered volume (contract C9, C11; decision 9: a rim of up to about 50 µm is accepted)
+    volume_mask_margin_um: float = 50.0
+
     @classmethod
     def load(cls, path: Path) -> "ProjectConfig":
         return cls(**yaml.safe_load(path.read_text()))
