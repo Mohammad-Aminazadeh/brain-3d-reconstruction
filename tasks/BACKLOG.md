@@ -42,7 +42,7 @@ Conventions that apply to every task (not repeated below):
 | M3-00 | Registration contracts (C1 to C12) | docs | Low | Done (approved 2026-10-20) | M3-06 |
 | M3-01 | Work-dir layout for reg, mask, transforms, qc | store | Low | Done | M2-04, M3-00 |
 | M3-02 | Synthetic tissue and similarity-transform generator | tests | Medium | Done | M0-05, M3-00 |
-| M3-03 | Registration image and preprocessing stage | preprocess | Medium | To do | M3-01, M3-04 |
+| M3-03 | Registration image and preprocessing stage | preprocess | Medium | Done | M3-01, M3-04 |
 | M3-04 | Tissue mask (defines "tissue", F12) | preprocess | Medium | Done | M3-00 |
 | M3-05 | `Transform2D` (similarity) model | registration | Medium | Done | M3-00 |
 | M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | Done | M3-02, M3-05 (M3-04 soft) |
@@ -365,13 +365,18 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: preprocess
 
-#### M3-03 Registration image and preprocessing stage · Medium · To do
+#### M3-03 Registration image and preprocessing stage · Medium · Done
 - **Objective:** One read of the 32x level per slice produces the mask and the registration image (contract C4).
 - **Inputs:** `SliceRef`, reader factory, `ProjectConfig`. **Outputs:** `make_reg_image(rgb, mask)` (255 minus luminance, CLAHE, 0 outside the mask); `preprocess_slice(...)` writing `reg/{id}.png`, `reg/{id}.json` and `mask/{id}.png`; `run_preprocess(...)` in the stage shape C7 with manifest resume.
 - **Depends on:** M3-01, M3-04 (the registration image is blanked outside the mask). **Files:** `src/brainrec/preprocess/regimage.py`, `src/brainrec/preprocess/stage.py`; `src/brainrec/slides/` (receives the `SliceSource` protocol, moved from `volume`; `volume` re-exports it).
 - **Subtasks:** M3-03a move `SliceSource` to `slides` (interface location change, no behaviour change); M3-03b `make_reg_image()`; M3-03c `preprocess_slice()` and `run_preprocess()`.
 - **Acceptance:** reads one whole 32x level (no level-0 access); output sizes equal the level size; metadata per C4; zero outside the mask; second run skips done slices.
 - **Tests:** `tests/unit/test_preprocess.py` with `FakeSlide` (size, inversion, zero background, metadata, reads only the requested level, resume).
+- **Result (2026-10-20):**
+  - **Code:** `src/brainrec/preprocess/{regimage,stage}.py`, `RegImage.load`, `store/stage.py` (`StageResult`, `StageExistsError`, `fingerprint`, atomic writes); `SliceSource` and `ReaderFactory` moved to `slides/source.py` (volume still re-exports `SliceSource`). 8 tests.
+  - **Real slices 1 to 10:** 9 s for 10 slices, 30 files (66 MB); the second run skips all; `register_pair` on the loaded files works.
+  - **C6 refinement:** per-slice stages keep finished slices when the range grows (ARCHITECTURE 5.1).
+  - **To watch in M3-11 and QC:** with fragments now in the masks, mask IoU of pairs drops slightly (5→6: 0.851 vs 0.874; 8→9: 0.963 vs 0.977), and pair 5→6 has 54 inliers (threshold 40), because detached fragments drift independently between sections.
 
 #### M3-04 Tissue mask · Medium · Done
 - **Objective:** Define what counts as tissue for every later stage (F12): registration, QC and the volume ignore everything outside the mask.

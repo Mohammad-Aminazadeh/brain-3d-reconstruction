@@ -11,29 +11,17 @@ import logging
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Protocol
 
-import numpy as np
 import zarr
 from zarr.codecs import ZstdCodec
 
 from brainrec.catalog import Catalog
-from brainrec.slides import LevelInfo, SlideReader
+from brainrec.slides import SliceSource, SlideReader
 from brainrec.store import Manifest
 
 log = logging.getLogger(__name__)
 
 FORMAT = "ome-zarr-0.5-sharded"
-
-
-class SliceSource(Protocol):
-    levels: list[LevelInfo]
-
-    @property
-    def mpp(self) -> tuple[float, float]: ...
-    def level_for_downsample(self, downsample: float) -> int: ...
-    def read_region(self, level: int, x: int, y: int, w: int, h: int) -> np.ndarray: ...
-    def close(self) -> None: ...
 
 
 class VolumeExistsError(RuntimeError):

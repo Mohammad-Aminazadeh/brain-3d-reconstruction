@@ -117,14 +117,16 @@ class ProjectConfig:                   # data_dir, work_dir, z_spacing_um, base_
 # preprocess                         # M3 (contracts C1, C4, C9)
 make_mask(rgb: ndarray, um_per_px: float, cfg: ProjectConfig) -> ndarray   # implemented (M3-04)
     # uint8 {0,255}; defines "tissue" (F12): saturation threshold with hysteresis, fragments kept
-make_reg_image(rgb: ndarray, mask: ndarray) -> ndarray
+make_reg_image(rgb: ndarray, mask: ndarray) -> ndarray   # implemented (M3-03)
     # uint8: 255 - luminance, CLAHE, 0 outside the mask
 preprocess_slice(slice: SliceRef, work: WorkDir, cfg: ProjectConfig,
-                 reader_factory=SlideReader.open) -> RegImage
+                 reader_factory=SlideReader.open) -> RegImage   # implemented (M3-03)
+run_preprocess(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=False) -> StageResult
+    # implemented (M3-03); stage shape C7; resume per C6 (refinement below)
     # one read of the 32x level; writes reg/{id}.png, reg/{id}.json, mask/{id}.png
 
 # registration                       # M3, feature-based (F13), tissue only (F12), similarity (C2, C3)
-RegImage(slice_id, image, mask, downsample, mpp_um)    # implemented (M3-07): .coarse(); .load(work, id) comes in M3-03
+RegImage(slice_id, image, mask, downsample, mpp_um)    # implemented: .coarse() (M3-07), .load(work, id) (M3-03)
 Transform2D                          # implemented (M3-05), registration/transform.py; see C2
 px_to_um(points, downsample, mpp), um_to_px(...)   # implemented (M3-05): the C1 helpers
 # helpers (implemented, M3-07) work in pixel space with plain arguments, so they are testable alone:
@@ -233,6 +235,8 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 **C6 Manifest.**
 - Keys `preprocess`, `register`, `qc`, `volume`, each `{signature, done: [ids]}`.
 - A signature contains the stage's parameters, its id list and a hash of the upstream stage's signature. Changed inputs therefore invalidate downstream work; they are never silently reused.
+- *Refinement (M3-03):* for **per-slice** stages (`preprocess`), the signature holds only the parameters (and an algorithm version), and each done slice records a fingerprint of its source file (name, size, modification time) under `sources`. Extending a range keeps finished slices; a changed source is redone; changed parameters raise `StageExistsError` unless `overwrite`. Stages whose result depends on the whole set of slices (`register`, `volume`) keep the id list in their signature.
+- `StageResult(done, skipped)`, `StageExistsError`, `fingerprint()` and `write_atomic()` (temporary file + rename) live in `store/stage.py`.
 
 **C7 Stage shape.**
 - `run_<stage>(catalog, work: WorkDir, cfg: ProjectConfig, manifest: Manifest, reader_factory=SlideReader.open, overwrite=False) -> StageResult(done, skipped)`.

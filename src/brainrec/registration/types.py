@@ -1,5 +1,6 @@
 """Data passed between registration steps (contracts C2, C4, C12)."""
 
+import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -7,6 +8,9 @@ import cv2
 import numpy as np
 
 from brainrec.registration.transform import Mpp, Transform2D
+from brainrec.store import WorkDir
+
+REGIMAGE_SCHEMA = "brainrec.regimage/1"
 
 Status = Literal["features", "boundary", "failed"]
 
@@ -23,6 +27,21 @@ class RegImage:
     mask: np.ndarray
     downsample: float
     mpp_um: Mpp
+
+    @classmethod
+    def load(cls, work: WorkDir, slice_id: int) -> "RegImage":
+        """Read the registration image, mask and metadata written by preprocessing (C4)."""
+        meta = json.loads(work.reg_meta(slice_id).read_text())
+        if meta.get("schema") != REGIMAGE_SCHEMA:
+            raise ValueError(f"unsupported registration image schema {meta.get('schema')!r}")
+        image = cv2.imread(str(work.reg_image(slice_id)), cv2.IMREAD_GRAYSCALE)
+        mask = cv2.imread(str(work.mask(slice_id)), cv2.IMREAD_GRAYSCALE)
+        if image is None or mask is None:
+            raise FileNotFoundError(f"registration image or mask of slice {slice_id} missing")
+        if image.shape != mask.shape or image.shape != (meta["height"], meta["width"]):
+            raise ValueError(f"slice {slice_id}: image, mask and metadata sizes differ")
+        mpp = (float(meta["mpp_um"][0]), float(meta["mpp_um"][1]))
+        return cls(slice_id, image, mask, float(meta["downsample"]), mpp)
 
     @property
     def um_per_px(self) -> float:
