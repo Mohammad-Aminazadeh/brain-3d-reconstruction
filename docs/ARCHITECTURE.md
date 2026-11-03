@@ -149,7 +149,9 @@ masked_ncc(fixed, fixed_mask, moving, moving_mask, m_px) -> float   # geometry.p
 correct_drift(...)                                       # post-MVP
 
 # qc                                 # M4, inside the tissue only
-score_pair(fixed: RegImage, moving: RegImage, result: PairResult) -> PairScore   # inliers, rms_um, masked NCC, mask Dice
+score_pair(fixed: RegImage, moving: RegImage, result: PairResult) -> PairScore   # implemented (M4-01)
+    # PairScore(n_inliers, rms_um, ncc, dice): registration's inliers and residual (µm), masked_ncc
+    # where both tissues overlap, Dice of the fixed and warped moving masks; mask_dice(fixed, moving, m_px)
 render_overlay(fixed: RegImage, moving: RegImage, t: Transform2D, out: Path) -> Path  # green/magenta + tissue outlines
 apply_override(...)                                      # post-MVP
 
@@ -283,7 +285,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 | `mask_hysteresis` | 0.75 | to be validated in M3-04 |
 | `mask_min_component_mm2` | 0.25 | spike: fragments 0.6 to 2.8 mm², specks below 0.2 |
 | `volume_mask_margin_um` | 50 | decision 9; `VolumeSpec.mask_margin_um` (M3-09) |
-| `qc_min_dice` | 0.90 | spike: flags the damaged pairs 3→4, 4→5, 5→6 |
+| `qc_min_dice` | 0.90 | spike masks: flagged the damaged pairs 3→4, 4→5, 5→6; with the M3-04 masks real Dice is 0.904 to 0.981 and 0.90 flags none (M4-01), so it is recalibrated in M4-05 |
 | `qc_min_ncc` | none until M4-05 | calibrated on real data |
 
 **C10 QC report.** `qc/report.json`: `{"schema": "brainrec.qc/1", "thresholds", "pairs": [{"fixed", "moving", "status", "n_inliers", "rms_um", "ncc", "dice", "flagged", "overlay"}]}`.

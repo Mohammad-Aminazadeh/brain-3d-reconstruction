@@ -51,7 +51,7 @@ Conventions that apply to every task (not repeated below):
 | M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | Done | M3-08, M3-09, M2-11 |
 | M3-12 | Transparent background in the viewer | serve | Low | Done | M3-09 |
 | M3-11 | Real registration, slices 1 to 10 | integration | Medium | Done | M3-10, M3-12, M2-10, M3-06 |
-| M4-01 | Pair score | qc | Medium | To do | M3-05, M3-02 |
+| M4-01 | Pair score | qc | Medium | Done | M3-05, M3-02 |
 | M4-02 | Overlay image | qc | Low | To do | M3-05 |
 | M4-03 | QC report and flags | qc | Low | To do | M4-01, M4-02, M3-01 |
 | M4-04 | `brainrec qc` command | pipeline | Low | To do | M4-03 |
@@ -539,12 +539,23 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: qc
 
-#### M4-01 Pair score · Medium · To do
+#### M4-01 Pair score · Medium · Done
 - **Objective:** Numbers per pair that separate good from bad alignment, computed inside the tissue only (F12).
 - **Inputs:** two registration images, masks, `PairResult`. **Outputs:** `PairScore(n_inliers, rms_um, ncc, dice)`: feature inliers and residual from registration, normalised cross-correlation inside the mask overlap, and Dice of the warped masks.
 - **Depends on:** M3-05, M3-02. **Files:** `src/brainrec/qc/metrics.py`.
 - **Acceptance:** identical images score 1.0; a 10-pixel misalignment scores clearly lower; unrelated images score lowest.
 - **Tests:** `tests/unit/test_qc_metrics.py`.
+- **Result (2026-11-03):**
+  - **Code:** `src/brainrec/qc/metrics.py`: `PairScore(n_inliers, rms_um, ncc, dice)`, `score_pair(fixed, moving, result)` and `mask_dice`. NCC reuses registration's `masked_ncc` (blurred, where both tissues overlap), so QC and the C12 rule measure the same thing; NCC and Dice rounded to 4 digits. Raises `ValueError` if the images are not the pair of the result or differ in level.
+  - **Tests:** 25 (synthetic, 4 seeds each where it matters): identical images score 1.0; 10 px off scores clearly lower (NCC 0.54 to 0.59 instead of above 0.99, Dice 0.96); a moved, rotated, scaled section scores high with its true transform; neighbouring sections rank aligned (NCC about 0.7) > 10 px off (about 0.5) > unrelated (below 0.11); unrelated scores lowest; debris on the glass changes nothing (F12); Dice known values; wrong pair and wrong level rejected. Mutation check: 6 deliberate faults (Dice as IoU, transform ignored by NCC or Dice, no pair check, no level check, residual dropped) each caught.
+  - **Real slices 1 to 10 (read only):**
+
+    | Pair | 1→2 | 2→3 | 3→4 | 4→5 | 5→6 | 6→7 | 7→8 | 8→9 | 9→10 |
+    |---|---|---|---|---|---|---|---|---|---|
+    | NCC | 0.460 | 0.501 | 0.403 | 0.305 | 0.314 | 0.679 | 0.659 | 0.745 | 0.695 |
+    | Dice | 0.981 | 0.965 | 0.944 | 0.904 | 0.918 | 0.977 | 0.976 | 0.981 | 0.980 |
+
+    The damaged pairs 4→5 and 5→6 score lowest on both numbers. **Input for M4-03/M4-05:** with the M3-04 masks (fragments kept) the proposed `qc_min_dice` 0.90 flags none of them (4→5 is 0.904); the spike value came from the earlier masks. Thresholds are calibrated in M4-05.
 
 #### M4-02 Overlay image · Low · To do
 - **Objective:** Visual check per pair.
