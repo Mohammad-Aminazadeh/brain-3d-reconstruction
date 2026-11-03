@@ -47,12 +47,12 @@ brainrec --config config/project.yaml serve   -> local Neuroglancer link, open i
 | R2 | Which pyramid levels exist | M1 | **Resolved:** 1, 2, 4, 8 ... always present; level count varies (9 to 11) |
 | R3 | OpenSlide reads these NDPI files | M1 | **Resolved:** yes, all 140 |
 | R4 | Volume size and storage | M1, M2 | **Resolved:** about 2 GB/slice lossless, about 280 GB for 140 slices; exFAT needs sharding |
-| R5 | Rigid registration aligns real adjacent slices | M3 | **Partly resolved (spike):** rigid is not enough (residual up to 242 µm); similarity (with uniform scale) fits to 16 to 19 µm. Damaged margins need non-rigid (post-MVP) |
+| R5 | Rigid registration aligns real adjacent slices | M3 | **Resolved for slices 1 to 10 (M3-11, owner review 2026-11-03):** rigid is not enough (spike: residual up to 242 µm); the similarity fit (with uniform scale) aligns all 9 pairs (residual 16 to 19 µm) and tissue stays in place through z. Damaged margins need non-rigid (post-MVP) |
 | R6 | Neuroglancer opens and streams the OME-Zarr | M2 | **Resolved:** works in Chrome with hardware acceleration on |
-| R7 | Slice orientation (flips) | M3 | **Resolved for slices 1 to 10 (spike):** no mirrored slices |
+| R7 | Slice orientation (flips) | M3 | **Resolved for slices 1 to 10 (spike, confirmed in M3-11):** no mirrored slices |
 | R8 | Z spacing unknown | n/a | Open: placeholder 5 µm in config |
-| R9 | Tissue masks decide what is kept: no tissue cut off, no glass or debris kept (F12) | M3 | **Resolved (spike):** saturation-based masks are clean; detached fragments are kept as tissue (owner, 2026-10-20), which the mask rule in M3-04 must implement |
-| R10 | Real neighbouring sections yield enough reliable feature matches (F13) | M3 | **Resolved (spike) with guided matching:** ORB 62 to 882 inliers per pair; global matching alone is not enough |
+| R9 | Tissue masks decide what is kept: no tissue cut off, no glass or debris kept (F12) | M3 | **Resolved for slices 1 to 10 (M3-04, M3-11):** the registered volume shows only tissue, detached fragments included, no glass, labels or debris and nothing cut off (owner review 2026-11-03) |
+| R10 | Real neighbouring sections yield enough reliable feature matches (F13) | M3 | **Resolved for slices 1 to 10 with guided matching (M3-11):** all 9 pairs `features`, 53 to 925 inliers; global matching alone is not enough (spike) |
 
 ## 6. Acceptance criteria
 
@@ -77,7 +77,7 @@ The MVP is accepted when all hold, each checked by a command or test that was ac
 | M0 | Environment and project setup | `pytest`, `ruff`, `mypy` run clean | Done (CI still to do) |
 | M1 | Data characterisation | Owner chose the base level (4x) | Done |
 | M2 | Unregistered vertical slice (10 slices, no registration) | Volume opens in Neuroglancer (R6) | Done |
-| M3 | Registration (feature-based, tissue only) | Synthetic tests pass (AC4, AC9 part); real result reviewed (R5, R7, R9, R10) | To do |
+| M3 | Registration (feature-based, tissue only) | Synthetic tests pass (AC4, AC9 part); real result reviewed (R5, R7, R9, R10) | Done (2026-11-03) |
 | M4 | Quality control | Owner can see which pairs are doubtful (AC5) | To do |
 | M5 | Integration: `brainrec run` end to end | AC1, AC2, AC3, AC6 | To do |
 | M6 | MVP review | All AC met; owner sign-off | To do |

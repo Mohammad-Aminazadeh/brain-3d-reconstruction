@@ -12,10 +12,20 @@ from fastapi.staticfiles import StaticFiles
 HOSTED_VIEWER = "https://neuroglancer-demo.appspot.com"
 
 # The OME channel axis "c" must be a Neuroglancer channel dimension ("c^") for getDataValue(i).
-_SHADER = (
-    "void main() { emitRGB(vec3(toNormalized(getDataValue(0)), "
-    "toNormalized(getDataValue(1)), toNormalized(getDataValue(2)))); }"
-)
+# Pure white is background (C11: fill value, never stored; tissue that is pure white is stored as
+# 254), so it is drawn transparent and the dark panel shows through (decision 10, M3-12).
+_SHADER = """void main() {
+  uint r = toRaw(getDataValue(0));
+  uint g = toRaw(getDataValue(1));
+  uint b = toRaw(getDataValue(2));
+  if (r == 255u && g == 255u && b == 255u) {
+    emitTransparent();
+  } else {
+    emitRGB(vec3(float(r), float(g), float(b)) / 255.0);
+  }
+}
+"""
+BACKGROUND = "#000000"  # panel colour behind the transparent background, for contrast
 
 
 def create_app(root: Path) -> FastAPI:
@@ -39,7 +49,8 @@ def neuroglancer_state(
     system_memory_mb: int = 1024,
     concurrent_downloads: int = 8,
 ) -> dict[str, Any]:
-    """Viewer state showing `volume_url` (OME-Zarr 0.5, axes c, z, y, x in um) as RGB.
+    """Viewer state showing `volume_url` (OME-Zarr 0.5, axes c, z, y, x in um) as RGB, with
+    pure-white background transparent over dark panels (C11, M3-12).
 
     Defaults are deliberately light: Chrome's GPU process crashed with the 4-panel layout and
     Neuroglancer's default limits (M2-10), and the USB drive serves only about 27 chunks/s, so
@@ -50,6 +61,10 @@ def neuroglancer_state(
         "gpuMemoryLimit": gpu_memory_mb * 1_000_000,
         "systemMemoryLimit": system_memory_mb * 1_000_000,
         "concurrentDownloads": concurrent_downloads,
+        "crossSectionBackgroundColor": BACKGROUND,
+        "projectionBackgroundColor": BACKGROUND,
+        # the volume's axes are z, y, x; without this the "xy" panel shows z-y, a side view
+        "displayDimensions": ["x", "y", "z"],
         "layers": [
             {
                 "type": "image",

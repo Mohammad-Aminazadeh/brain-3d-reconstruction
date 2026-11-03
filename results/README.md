@@ -21,3 +21,12 @@ Real-data spike on slices 1 to 10 at 32x (about 7 µm/px), made with `scripts/sp
 | File | Shows |
 |---|---|
 | `mask_contact_sheet.jpg` | Slices 1 to 10 with the final tissue masks of M3-04 (chroma threshold with hysteresis; detached fragments kept; scanner edge and debris excluded). Checked and approved by the owner. |
+
+## M3-11_registered_volume (2026-11-03)
+
+Taken from the registered, tissue-only volume of slices 1 to 10 (`brainrec volume --slices 1-10`), pyramid level 4 (64x of the scan, about 14 µm/px), so they show exactly what the viewer stacks in z. Match quality per pair: `tasks/BACKLOG.md`, M3-11.
+
+| File | Shows |
+|---|---|
+| `contact_sheet.jpg` | The 10 planes of the volume (tiles at half size). Everything outside the tissue masks is background (dark grey here, transparent in the viewer); no glass, label or debris is kept. |
+| `overlay_<k>.jpg` | Plane of slice k-1 (green) and slice k (magenta) in the volume. Internal structures line up; coloured areas are tissue present in only one section (tears, folds, lost pieces). |

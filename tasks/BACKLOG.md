@@ -49,8 +49,8 @@ Conventions that apply to every task (not repeated below):
 | M3-08 | Chain and register a slice range | registration | Low | Done | M3-07, M3-01, M3-03, M3-04 |
 | M3-09 | Volume builder with transforms, tissue only | volume | High | Done | M3-05, M2-05 (M3-04 soft) |
 | M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | Done | M3-08, M3-09, M2-11 |
-| M3-12 | Transparent background in the viewer | serve | Low | To do | M3-09 |
-| M3-11 | Real registration, slices 1 to 10 | integration | Medium | To do | M3-10, M3-12, M2-10, M3-06 |
+| M3-12 | Transparent background in the viewer | serve | Low | Done | M3-09 |
+| M3-11 | Real registration, slices 1 to 10 | integration | Medium | Done | M3-10, M3-12, M2-10, M3-06 |
 | M4-01 | Pair score | qc | Medium | To do | M3-05, M3-02 |
 | M4-02 | Overlay image | qc | Low | To do | M3-05 |
 | M4-03 | QC report and flags | qc | Low | To do | M4-01, M4-02, M3-01 |
@@ -490,21 +490,48 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: serve
 
-#### M3-12 Transparent background in the viewer · Low · To do
+#### M3-12 Transparent background in the viewer · Low · Done
 - **Objective:** Show everything outside the tissue as transparent, so empty space contrasts with the tissue (owner decision, 2026-10-19).
 - **Inputs:** a volume in which background voxels are exactly (255, 255, 255) and tissue voxels never are (C11, M3-09f). **Outputs:** Neuroglancer shader: transparent where all three channels are 255, RGB colour elsewhere; dark panel background for contrast.
 - **Depends on:** M3-09. **Files:** `src/brainrec/serve/app.py`, `tests/unit/test_serve.py`, README (viewer controls).
 - **Acceptance:** in the registered volume, glass areas are transparent in the 2D and 3D panels; tissue colours unchanged.
 - **Tests:** state contains the transparent branch; Neuroglancer's own parser accepts the state; owner check in M3-11.
+- **Result (2026-11-03):**
+  - **Code:** `serve/app.py`: the shader compares the raw channel values with 255 (`toRaw`, exact integers) and calls `emitTransparent()` only where all three are 255; elsewhere `emitRGB` with the same colours as before. `crossSectionBackgroundColor` and `projectionBackgroundColor` are black.
+  - **Tests:** 2 new (transparent branch and black panels in the state; Neuroglancer's Python parser accepts the state).
+  - **Shader review:** checked against the installed Neuroglancer client: user shaders compile as GLSL ES 3.00 with `precision highp int`; `getDataValue(i)` returns `uint8_t` for this data, `toRaw(uint8_t)` returns `uint`, `emitTransparent()` exists.
+  - **Not verified automatically:** headless Chrome on this Mac does not render Neuroglancer's WebGL canvas (black even with the M2 shader that works in a normal window, with software and with GPU rendering), so the picture itself is checked by the owner in M3-11. If the layer shows a shader error there, this task is reopened.
+  - **Owner check (M3-11, 2026-11-03):** background transparent, tissue colours correct. It needed one fix: the default panel showed the side view (see M3-11, viewer fix).
 
 ### Component: integration
 
-#### M3-11 Real registration, slices 1 to 10 · Medium · To do
+#### M3-11 Real registration, slices 1 to 10 · Medium · Done
 - **Objective:** Resolve risk R5 on real data.
 - **Inputs:** My Passport slices 1 to 10. **Outputs:** transforms, registered volume, metric per pair, run times.
 - **Depends on:** M3-10, M3-12, M2-10, M3-06.
 - **Acceptance:** in Neuroglancer, scrolling through z shows tissue staying in place (owner's judgement); any pair that fails is listed with its match quality; the volume shows only tissue (no debris, no tissue cut off at the edges; a rim of up to about 50 µm is accepted), with the background transparent; volume size compared with the unregistered M2 volume.
 - **Tests:** run log; owner review.
+- **Run (2026-11-03):**
+  - **Commands** (config `config/project.yaml`, all exit 0): `preprocess --slices 1-10` and `register --slices 1-10` resumed (0 done, 10 and 9 up to date, under 1 s each; their first runs took 9 s and 86 s, see M3-03 and M3-08). `volume --slices 1-10 --overwrite` replaced the unregistered M2 volume: 723 s (12 min), peak memory 2.8 GB, 48 to 49 of 54 base-level tiles per slice written.
+  - **Outputs:** 10 masks, 9 pair results and 10 chained transforms (reference slice 1); `load_chained` accepts them as one run. Volume canvas 36016 × 24192 px at 4x (M2: 37632 × 26880), 732 files (none left over from M2), 15.4 GB on disk (M2: 19 GB, `du`).
+  - **Match quality per pair** (all `features`, none failed):
+
+    | Pair | Matches | Inliers | Residual (µm) | Mask IoU | Pair rotation | Chained rotation, scale |
+    |---|---|---|---|---|---|---|
+    | 1→2 | 3495 | 361 | 18.5 | 0.963 | −3.64° | −3.64°, 1.001 |
+    | 2→3 | 3079 | 366 | 16.6 | 0.931 | −3.26° | −6.90°, 0.997 |
+    | 3→4 | 1935 | 80 | 18.5 | 0.894 | −0.25° | −7.16°, 1.019 |
+    | 4→5 | 2393 | 148 | 17.9 | 0.825 | +3.26° | −3.90°, 1.019 |
+    | 5→6 | 1655 | 53 | 18.5 | 0.848 | +9.94° | +6.04°, 0.972 |
+    | 6→7 | 3493 | 919 | 16.5 | 0.955 | −5.00° | +1.04°, 0.975 |
+    | 7→8 | 2567 | 322 | 17.4 | 0.952 | −1.38° | −0.34°, 0.969 |
+    | 8→9 | 3484 | 925 | 16.3 | 0.963 | −0.67° | −1.01°, 0.967 |
+    | 9→10 | 3194 | 704 | 17.2 | 0.961 | −4.11° | −5.13°, 0.971 |
+
+  - **Sources unchanged:** size and modification time of slices 1 to 10 identical before and after the run.
+  - **Figures** from the finished volume at 64x: `results/M3-11_registered_volume/` (see `results/README.md`). Internal structures (ventricles, central boundary, vessels) line up in every pair; the remaining differences are torn, folded or missing tissue at the margins. Pairs to look at first in the viewer: 5→6 (fewest inliers, largest rotation, +9.9°) and 4→5 (small offset at the left ventricle, lowest mask IoU).
+  - **Viewer fix (2026-11-03):** in the first review the default `xy` panel showed the stack from the side (z-y), so the transparent background could not be judged. Cause: the volume's axes are stored z, y, x and Neuroglancer forms the panel from the first two; the M2 volume had the same default. Fix: the viewer state sets `displayDimensions` to x, y, z (`serve/app.py`, 2 test assertions). The owner found everything else correct in the first review.
+  - **Owner review (2026-11-03):** passed. Tissue stays in place through z, only tissue is visible, the background is transparent over the black panel (confirms M3-12 on real data). R5, R7, R9 and R10 updated in `docs/MVP.md`; M3 gate met.
 
 ---
 

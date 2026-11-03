@@ -183,7 +183,9 @@ build_volume(catalog, out: Path, spec: VolumeSpec, manifest: Manifest | None = N
 # serve                              # implemented (M2)
 create_app(root: Path) -> FastAPI      # static files of the work dir, CORS + range requests
 neuroglancer_state(volume_url, ome) -> dict   # RGB layer; OME axis c mapped to channel dim "c^"
-                                              # M3-12: shader shows pure white (background) as transparent
+    # implemented (M3-12): shader draws pure white (background, C11) transparent, every other voxel
+    # in its RGB colour; panel backgrounds black (crossSection/projectionBackgroundColor);
+    # displayDimensions x, y, z, so the "xy" panel shows the section plane (axes are stored z, y, x)
 launch_local_viewer(state, port=0) -> neuroglancer.Viewer   # served from 127.0.0.1; caller keeps it alive (weak refs)
 GET /volume.zarr/{path}                # Zarr metadata and shard files
 GET /tile/{z}/{level}/{x}/{y}          # post-MVP, native-resolution tile

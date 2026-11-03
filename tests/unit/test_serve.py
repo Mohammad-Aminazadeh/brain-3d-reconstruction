@@ -70,3 +70,29 @@ def test_hosted_url_roundtrips_state():
     state = neuroglancer_state("http://127.0.0.1:8000/volume.zarr", OME)
     url = hosted_url(state)
     assert json.loads(urllib.parse.unquote(url.split("#!")[1])) == state
+
+
+def test_background_is_transparent_over_dark_panels():
+    state = neuroglancer_state("http://127.0.0.1:8000/volume.zarr", OME)
+    shader = state["layers"][0]["shader"]
+    # transparent only where all three channels are 255 (C11), RGB colour everywhere else
+    assert "r == 255u && g == 255u && b == 255u" in shader and "emitTransparent()" in shader
+    assert "emitRGB(vec3(float(r), float(g), float(b)) / 255.0)" in shader
+    assert state["crossSectionBackgroundColor"] == state["projectionBackgroundColor"] == "#000000"
+
+
+def test_neuroglancer_parser_accepts_state():
+    import neuroglancer
+
+    state = neuroglancer_state("http://127.0.0.1:8000/volume.zarr", OME)
+    parsed = neuroglancer.ViewerState(state)
+    assert parsed.layers["brain"].shader == state["layers"][0]["shader"]
+    assert parsed.cross_section_background_color == "#000000"
+    assert list(parsed.display_dimensions) == ["x", "y", "z"]
+    assert parsed.to_json()["layers"][0]["source"] == state["layers"][0]["source"]
+
+
+def test_xy_panel_shows_the_section_plane():
+    state = neuroglancer_state("http://127.0.0.1:8000/volume.zarr", OME)
+    # axes are stored z, y, x; the first two display dimensions form the "xy" panel
+    assert state["displayDimensions"] == ["x", "y", "z"]
