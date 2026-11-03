@@ -152,7 +152,9 @@ correct_drift(...)                                       # post-MVP
 score_pair(fixed: RegImage, moving: RegImage, result: PairResult) -> PairScore   # implemented (M4-01)
     # PairScore(n_inliers, rms_um, ncc, dice): registration's inliers and residual (µm), masked_ncc
     # where both tissues overlap, Dice of the fixed and warped moving masks; mask_dice(fixed, moving, m_px)
-render_overlay(fixed: RegImage, moving: RegImage, t: Transform2D, out: Path) -> Path  # green/magenta + tissue outlines
+render_overlay(fixed: RegImage, moving: RegImage, t: Transform2D, out: Path) -> Path  # implemented (M4-02)
+    # PNG at registration level in the fixed frame: fixed green, warped moving magenta, grey where
+    # they agree, background black, tissue outlines in the same colours; overlay_rgb(...) -> array
 apply_override(...)                                      # post-MVP
 
 # store                              # implemented (M2)

@@ -52,7 +52,7 @@ Conventions that apply to every task (not repeated below):
 | M3-12 | Transparent background in the viewer | serve | Low | Done | M3-09 |
 | M3-11 | Real registration, slices 1 to 10 | integration | Medium | Done | M3-10, M3-12, M2-10, M3-06 |
 | M4-01 | Pair score | qc | Medium | Done | M3-05, M3-02 |
-| M4-02 | Overlay image | qc | Low | To do | M3-05 |
+| M4-02 | Overlay image | qc | Low | Done | M3-05 |
 | M4-03 | QC report and flags | qc | Low | To do | M4-01, M4-02, M3-01 |
 | M4-04 | `brainrec qc` command | pipeline | Low | To do | M4-03 |
 | M4-05 | Real QC review, slices 1 to 10 | integration | Medium | To do | M4-04, M3-11 |
@@ -557,12 +557,17 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
     The damaged pairs 4→5 and 5→6 score lowest on both numbers. **Input for M4-03/M4-05:** with the M3-04 masks (fragments kept) the proposed `qc_min_dice` 0.90 flags none of them (4→5 is 0.904); the spike value came from the earlier masks. Thresholds are calibrated in M4-05.
 
-#### M4-02 Overlay image · Low · To do
+#### M4-02 Overlay image · Low · Done
 - **Objective:** Visual check per pair.
-- **Outputs:** `qc/overlay_{id}.png`: fixed slice in green, warped moving slice in magenta (aligned tissue looks gray/white), both tissue outlines drawn, inlier feature positions marked.
+- **Outputs:** `qc/overlay_{id}.png`: fixed slice in green, warped moving slice in magenta (aligned tissue looks gray/white), both tissue outlines drawn. (Inlier feature positions dropped, owner 2026-11-03: see Result.)
 - **Depends on:** M3-05. **Files:** `src/brainrec/qc/overlay.py`.
 - **Acceptance:** correct size; channels assigned as documented.
 - **Tests:** `tests/unit/test_qc_overlay.py`.
+- **Result (2026-11-03):**
+  - **Code:** `src/brainrec/qc/overlay.py`: `overlay_rgb(fixed, moving, t)` and `render_overlay(fixed, moving, t, out)` (signature as in ARCHITECTURE). Moving image and mask warped into the fixed frame; fixed in green, moving in red and blue (magenta), grey where they agree, background black (registration images are 0 outside the mask, C4); outlines 3 px in green and magenta; PNG written atomically.
+  - **Tests:** 9 (colour code per channel, outline colours, transform applied, aligned synthetic tissue grey, output size = fixed frame, PNG equals the array and leaves no temporary file, mismatched levels rejected, background black). Mutation check: 6 deliberate faults (channels swapped, transform ignored, moving outline not warped, no outlines, wrong outline colour, non-atomic write) each caught; the outline-colour fault first slipped through because the test compared against the module's own constant, so the test now uses the literal colours.
+  - **Real pairs 5→6 and 8→9** (scratch, not in the work dir): 0.6 s each, 4368 × 3192 px, about 20 MB per PNG. 8→9 is grey with coinciding outlines; 5→6 shows the damaged margins in green and magenta.
+  - **Inlier positions not marked (owner decision, 2026-11-03):** registration keeps only the inlier count (neither `Fit` nor the pair file C5 stores positions), and the ARCHITECTURE signature takes none. Storing them would change the pair file format, recomputing them in QC would not reproduce registration's inliers; the overlay shows the alignment, and the count goes into the QC report (M4-03).
 
 #### M4-03 QC report and flags · Low · To do
 - **Objective:** One report listing every pair, its scores and a flag.
