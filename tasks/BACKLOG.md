@@ -48,7 +48,7 @@ Conventions that apply to every task (not repeated below):
 | M3-07 | Feature-based pairwise registration (guided ORB, similarity, tissue only) | registration | High | Done | M3-02, M3-05 (M3-04 soft) |
 | M3-08 | Chain and register a slice range | registration | Low | Done | M3-07, M3-01, M3-03, M3-04 |
 | M3-09 | Volume builder with transforms, tissue only | volume | High | Done | M3-05, M2-05 (M3-04 soft) |
-| M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | To do | M3-08, M3-09, M2-11 |
+| M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | Done | M3-08, M3-09, M2-11 |
 | M3-12 | Transparent background in the viewer | serve | Low | To do | M3-09 |
 | M3-11 | Real registration, slices 1 to 10 | integration | Medium | To do | M3-10, M3-12, M2-10, M3-06 |
 | M4-01 | Pair score | qc | Medium | To do | M3-05, M3-02 |
@@ -471,7 +471,7 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: pipeline
 
-#### M3-10 Interim CLI: `preprocess`, `register` · Low · To do
+#### M3-10 Interim CLI: `preprocess`, `register` · Low · Done
 - **Objective:** Run M3 stages on real data before the M5 runner exists.
 - **Outputs:** `brainrec preprocess --slices A-B`, `brainrec register --slices A-B`; `brainrec volume` uses chained transforms when they exist (`--unregistered` to force M2 mode).
 - **Also (gaps found in M2-11; owner, 2026-10-20):**
@@ -480,6 +480,13 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Depends on:** M3-08, M3-09, M2-11 (creates `tests/unit/test_cli.py`). **Files:** `src/brainrec/pipeline/cli.py`, `src/brainrec/catalog/config.py`, README usage, `docs/ARCHITECTURE.md` (C9).
 - **Acceptance:** each command runs on a synthetic temp work dir; each listed user error gives an `error:` message and no traceback; a config with an unknown key is rejected, naming the key.
 - **Tests:** `tests/unit/test_cli.py` and `tests/unit/test_config.py` (extended).
+- **Result (2026-10-20):**
+  - **Code:** `cli.py` rewritten around one function per command; `ProjectConfig` with `extra="forbid"` and a clear error for a file without settings; new `load_chained(work, ids)` in `registration/chain.py`.
+  - **Design choice (beyond the task text):** `volume` builds the registered volume by default and stops with an error, naming `register` and `--unregistered`, if the slices are not registered. It does not silently fall back to the unregistered M2 volume.
+  - **Found and fixed:** a register run chains its range to the range's first slice, and the chained files do not record that slice. Registering 1 to 10 and later 5 to 15 would have let `volume --slices 1-15` mix transforms to slice 1 and to slice 5 without any error. `load_chained` checks chained[k] = chained[prev] ∘ pair[k] (exact within one run) and refuses anything else, without changing any file format (C5 refinement).
+  - **Tests:** 28 new (CLI 19, config 4, `load_chained` 5); the 8 CLI tests of M2-11 now pass `--unregistered` where they test the M2 path. CLI: every command on a synthetic work dir (preprocess, register and registered volume end to end, then a second run that skips everything; `serve` with the viewer and data server stubbed); each listed user error ends in one `error:` line (missing, empty, invalid or misspelled config, invalid YAML, data folder missing, missing or reversed slice range, register before preprocess, volume before register, transforms of separate runs, other settings without `--overwrite`, failed registration, `serve` without a volume); one check through the real console script that the user sees exactly one line and exit status 1; bugs still raise. Config: unknown setting, file without settings. `load_chained`: parts of one run accepted, unregistered slices named, three kinds of separate runs refused.
+  - **Mutation check:** seven deliberate breaks in a scratch copy (chain check skipped, unknown keys allowed, OSError not a user error, reversed range accepted, silent fallback to unregistered, mask margin from config ignored, data folder check removed) each fail at least one test.
+  - **Real data (read-only):** `load_chained` accepts the real transforms of slices 1 to 10 from M3-08 (angles 0 to −5.13°, unchanged). `brainrec volume --slices 1-10` on the real work dir stops at the guard with one line (the unregistered M2 volume exists; M3-11 needs `--overwrite`), and the manifest is unchanged.
 
 ### Component: serve
 

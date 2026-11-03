@@ -36,18 +36,24 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 | Environment set up (M0) | Done: .venv, dependencies, package skeleton, lint and type checks |
 | M1 data characterisation | Done (see docs/REQUIREMENTS.md section 7) |
 | M2 unregistered volume | Done: slices 1 to 10 (19.5 GB, 11.5 min), checked in Neuroglancer |
-| M3 registration | In progress: spike (M3-06), contracts (M3-00), transform model (M3-05), synthetic data (M3-02), pairwise registration (M3-07), work-dir layout (M3-01), tissue mask (M3-04), preprocessing stage (M3-03), register stage (M3-08) and registered volume builder (M3-09) done; feature-based, tissue-only, similarity (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
+| M3 registration | In progress: spike (M3-06), contracts (M3-00), transform model (M3-05), synthetic data (M3-02), pairwise registration (M3-07), work-dir layout (M3-01), tissue mask (M3-04), preprocessing stage (M3-03), register stage (M3-08), registered volume builder (M3-09) and interim CLI (M3-10) done; feature-based, tissue-only, similarity (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
 
 ## Usage (current)
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # or: pip install -r requirements-lock.txt
 cp config/project.example.yaml config/project.yaml          # adjust paths if needed
-.venv/bin/brainrec --config config/project.yaml volume --slices 1-10
+.venv/bin/brainrec --config config/project.yaml preprocess --slices 1-10  # tissue masks, 32x images
+.venv/bin/brainrec --config config/project.yaml register --slices 1-10    # align, chain to slice 1
+.venv/bin/brainrec --config config/project.yaml volume --slices 1-10      # registered, tissue only
 .venv/bin/brainrec --config config/project.yaml serve        # prints a viewer link; open it in Chrome
 .venv/bin/pytest                                             # tests
 .venv/bin/ruff check src tests scripts && .venv/bin/ruff format --check src tests scripts && .venv/bin/mypy
 ```
+
+- Each stage resumes: a second run skips finished slices and pairs. `--overwrite` redoes results made with other settings, or replaces a volume built from other inputs; nothing is replaced without it.
+- `volume` needs the slices registered together in one `register` run; `volume --unregistered` stacks the whole scans without registration, as in M2.
+- Mistakes such as a missing slice, a misspelled setting in the config or a missing step end with a one-line `error: ...` message that says what to do.
 
 ### Viewer controls (Neuroglancer)
 

@@ -35,6 +35,27 @@ def chain(pairs: dict[int, Transform2D], ids: list[int]) -> dict[int, Transform2
     return out
 
 
+def load_chained(work: WorkDir, ids: list[int]) -> dict[int, Transform2D]:
+    """Chained transforms of `ids` (in catalog order) from `work`, checked to form one chain.
+
+    A register run chains its range to the range's first slice; runs over other ranges leave
+    transforms to other reference slices, which must never be mixed. So every slice after the
+    first must satisfy chained[k] = chained[prev] ∘ pair[k] (C2), as within one run.
+    Raises FileNotFoundError naming the slices without a chained transform, and ValueError
+    naming the first two slices that were not chained together.
+    """
+    missing = [k for k in ids if not work.chained_transform(k).exists()]
+    if missing:
+        raise FileNotFoundError(f"slices {missing} have no chained transform")
+    out = {k: Transform2D.load(work.chained_transform(k)) for k in ids}
+    for prev, k in itertools.pairwise(ids):
+        path = work.pair_transform(k)
+        pr = PairResult.from_dict(json.loads(path.read_text())) if path.exists() else None
+        if pr is None or pr.fixed != prev or not out[k].allclose(out[prev].compose(pr.transform)):
+            raise ValueError(f"slices {prev} and {k} were not registered in the same run")
+    return out
+
+
 def _signature(cfg: ProjectConfig) -> dict:
     params = {k: v for k, v in cfg.model_dump().items() if k.startswith("reg_")}
     params["reg_window_um"] = list(params["reg_window_um"])

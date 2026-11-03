@@ -111,7 +111,7 @@ class Catalog:                         # implemented (M2)
     @classmethod scan(data_dir: Path, id_range: tuple[int, int] | None = None) -> Catalog
     slices: list[SliceRef]             # id (int N), path, in order; raises on gaps or duplicates
 class ProjectConfig:                   # data_dir, work_dir, z_spacing_um, base_downsample, n_levels
-    @classmethod load(path: Path) -> ProjectConfig
+    @classmethod load(path: Path) -> ProjectConfig   # unknown settings are rejected (M3-10), see C9
 # Voxel size is not on Catalog (as first drafted): x/y come from the slides' mpp, z from ProjectConfig.
 
 # preprocess                         # M3 (contracts C1, C4, C9)
@@ -143,6 +143,8 @@ register_pair(fixed: RegImage, moving: RegImage, cfg) -> PairResult   # implemen
 chain(pairs: dict[int, Transform2D], ids: list[int]) -> dict[int, Transform2D]  # implemented (M3-08); reference = ids[0]
 run_register(catalog, work, cfg, manifest, reader_factory=..., overwrite=False) -> StageResult  # implemented (M3-08), C7
     # raises RegistrationFailedError at a failed pair (C12); StageExistsError if settings changed
+load_chained(work, ids: list[int]) -> dict[int, Transform2D]   # implemented (M3-10), see C5
+    # chained transforms of `ids`, checked to form one chain; FileNotFoundError / ValueError
 masked_ncc(fixed, fixed_mask, moving, moving_mask, m_px) -> float   # geometry.py (M3-08); reused by QC
 correct_drift(...)                                       # post-MVP
 
@@ -186,11 +188,15 @@ launch_local_viewer(state, port=0) -> neuroglancer.Viewer   # served from 127.0.
 GET /volume.zarr/{path}                # Zarr metadata and shard files
 GET /tile/{z}/{level}/{x}/{y}          # post-MVP, native-resolution tile
 
-# pipeline (CLI)
-brainrec --config C volume --slices A-B [--overwrite]   # interim (M2)
-brainrec --config C serve [--port 8000]                # interim (M2); viewer on port+1
-brainrec --config C preprocess --slices A-B             # interim (M3-10)
-brainrec --config C register --slices A-B               # interim (M3-10)
+# pipeline (CLI)                     # interim commands until `brainrec run` (M2-08, M3-10)
+brainrec --config C preprocess --slices A-B [--overwrite]
+brainrec --config C register --slices A-B [--overwrite]   # chained to slice A
+brainrec --config C volume --slices A-B [--overwrite] [--unregistered]
+    # registered, tissue-only (C8, C11) from load_chained and the masks; --unregistered = M2 mode
+brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512]   # viewer on port+1
+    # --slices: A-B or N. User errors (config, slice range, missing step, other settings without
+    # --overwrite, failed pair, drive not connected) end with one line `error: ...`, exit status 1;
+    # other exceptions are bugs and keep their traceback.
 brainrec run [--stage S] [--slices A-B]                # M5
 brainrec status                                        # M5
 brainrec qc                                            # M4
@@ -239,7 +245,8 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - A pair is keyed by its moving slice k; fixed = the previous slice in catalog order.
 - `transforms/pair_{k}.json` holds the `PairResult` (k → k−1).
 - `transforms/chained_{k}.json` holds the transform k → reference.
-- Reference = the first slice of the run range. It is part of the manifest signature.
+- Reference = the first slice of the register run's range. It is not recorded: the chained files are rebuilt on every run (C6, M3-08 refinement), so runs over other ranges leave transforms to other references side by side.
+- *Refinement (M3-10):* consumers therefore read them through `load_chained(work, ids)`, which requires chained[k] = chained[prev] ∘ pair[k] for every slice after the first. That holds within one run and fails across runs, so transforms to different references are never mixed in one volume.
 
 **C6 Manifest.**
 - Keys `preprocess`, `register`, `qc`, `volume`, each `{signature, done: [ids]}`.
@@ -256,7 +263,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - `build_volume(..., transforms: dict[int, Transform2D] | None, masks: dict[int, Path] | None)`, keyed by slice id. `None` means M2 mode.
 - Volume attributes add `reference_slice`, `canvas_origin_um`, `mask_margin_um`, and a per-slice hash of transform and mask.
 
-**C9 Configuration** (flat fields with defaults, so existing configs keep working):
+**C9 Configuration** (flat fields with defaults, so existing configs keep working). Unknown fields are rejected (M3-10, owner decision 2026-10-20), so a misspelled setting is an error naming it instead of a silent default:
 
 | Field | Default | Source |
 |---|---|---|

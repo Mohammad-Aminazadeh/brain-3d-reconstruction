@@ -43,6 +43,21 @@ def test_rejects_wrong_type(tmp_path):
     assert [e["loc"] for e in exc.value.errors()] == [("z_spacing_um",)]
 
 
+def test_rejects_unknown_setting(tmp_path):
+    with pytest.raises(ValidationError) as exc:  # a misspelling must not fall back to the default
+        _load(tmp_path, {**REQUIRED, "base_downsampel": 8})
+    errors = exc.value.errors()
+    assert [(e["loc"], e["type"]) for e in errors] == [(("base_downsampel",), "extra_forbidden")]
+
+
+@pytest.mark.parametrize("text", ["", "# only a comment\n", "- data_dir\n- work_dir\n"])
+def test_rejects_file_without_settings(tmp_path, text):
+    path = tmp_path / "project.yaml"
+    path.write_text(text)
+    with pytest.raises(TypeError, match="holds no settings"):
+        ProjectConfig.load(path)
+
+
 def test_example_config_loads():
     cfg = ProjectConfig.load(EXAMPLE)  # the documented starting point (README)
     assert cfg.base_downsample == 4

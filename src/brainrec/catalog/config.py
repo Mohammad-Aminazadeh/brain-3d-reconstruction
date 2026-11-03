@@ -3,10 +3,12 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ProjectConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # a misspelled setting is an error, not a default
+
     data_dir: Path
     work_dir: Path
     z_spacing_um: float  # distance between sections; PLACEHOLDER until the lab supplies it
@@ -37,4 +39,9 @@ class ProjectConfig(BaseModel):
 
     @classmethod
     def load(cls, path: Path) -> "ProjectConfig":
-        return cls(**yaml.safe_load(path.read_text()))
+        """Settings from a YAML file. Raises pydantic.ValidationError on missing, unknown or
+        invalid settings, and TypeError if the file holds no `name: value` settings at all."""
+        values = yaml.safe_load(path.read_text())
+        if not isinstance(values, dict):
+            raise TypeError(f"{path} holds no settings (expected `name: value` lines)")
+        return cls.model_validate(values)

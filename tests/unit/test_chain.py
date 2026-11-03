@@ -1,3 +1,4 @@
+import itertools
 import json
 import math
 
@@ -9,8 +10,13 @@ import brainrec.registration.chain as chain_mod
 from brainrec.catalog import Catalog, ProjectConfig
 from brainrec.preprocess import run_preprocess
 from brainrec.registration import PairResult, Transform2D
-from brainrec.registration.chain import RegistrationFailedError, chain, run_register
-from brainrec.store import Manifest, StageExistsError, WorkDir
+from brainrec.registration.chain import (
+    RegistrationFailedError,
+    chain,
+    load_chained,
+    run_register,
+)
+from brainrec.store import Manifest, StageExistsError, WorkDir, write_atomic
 from tests.synthetic.fake_slide import FakeSlide
 from tests.synthetic.tissue import UM_PER_PX, apply_similarity, make_tissue, perturb
 
@@ -155,6 +161,48 @@ def test_failed_pair_stops_the_chain(tmp_path):
     assert not work.pair_transform(4).exists()  # stopped at the failure
     with pytest.raises(RegistrationFailedError):  # a rerun reports it again, without recomputing
         run_register(Catalog.scan(cfg.data_dir, (1, 4)), work, cfg, Manifest(work.manifest))
+
+
+def _write_run(work, ids):
+    """Pair and chained files as one register run over `ids` leaves them (no images needed)."""
+    pairs = {k: Transform2D.similarity(0.01 * k, 1.0, 5.0 * k, -3.0 * k) for k in ids[1:]}
+    for (prev, k), t in zip(itertools.pairwise(ids), pairs.values(), strict=True):
+        pr = PairResult(prev, k, t, "features", 100, 80, 15.0, 0.95)
+        write_atomic(work.pair_transform(k), json.dumps(pr.to_dict()).encode())
+    for k, t in chain(pairs, ids).items():
+        t.save(work.chained_transform(k))
+
+
+def test_load_chained_returns_one_chain(tmp_path):
+    work = WorkDir(tmp_path)
+    _write_run(work, [1, 2, 3, 4])
+    for ids in ([1, 2, 3, 4], [2, 3], [4]):  # any part of one run
+        got = load_chained(work, ids)
+        assert list(got) == ids
+        assert all(got[k].allclose(Transform2D.load(work.chained_transform(k))) for k in ids)
+
+
+def test_load_chained_names_unregistered_slices(tmp_path):
+    work = WorkDir(tmp_path)
+    _write_run(work, [1, 2])
+    with pytest.raises(FileNotFoundError, match=r"slices \[3, 4\]"):
+        load_chained(work, [1, 2, 3, 4])
+
+
+@pytest.mark.parametrize(
+    ("runs", "ids", "seam"),
+    [
+        ([[1, 2, 3, 4], [3, 4]], [1, 2, 3, 4], "2 and 3"),  # second run: reference slice 3
+        ([[1, 2], [3, 4]], [1, 2, 3, 4], "2 and 3"),  # no pair between the runs
+        ([[1, 2, 3, 4], [2, 3, 4]], [1, 2], "1 and 2"),
+    ],
+)
+def test_load_chained_refuses_separate_runs(tmp_path, runs, ids, seam):
+    work = WorkDir(tmp_path)
+    for run in runs:
+        _write_run(work, run)
+    with pytest.raises(ValueError, match=f"slices {seam} were not registered in the same run"):
+        load_chained(work, ids)
 
 
 def test_missing_preprocessing_is_reported(tmp_path):

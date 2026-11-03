@@ -1,46 +1,94 @@
 import functools
+import json
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 import yaml
 import zarr
 
 from brainrec.pipeline import cli
-from brainrec.store import WorkDir
+from brainrec.preprocess import run_preprocess
+from brainrec.registration import PairResult, Transform2D
+from brainrec.registration.chain import RegistrationFailedError
+from brainrec.store import WorkDir, write_atomic
 from brainrec.volume import VolumeSpec, build_volume
-from tests.synthetic.fake_slide import FakeFactory
+from tests.synthetic.fake_slide import FakeFactory, FakeSlide
+from tests.synthetic.tissue import apply_similarity, make_tissue, perturb
 
 SIZES = {f"s_{i}_H.ndpi": (64, 48) for i in range(1, 11)}
+MPP = (0.2205, 0.2205)
+MOTIONS = {1: (0.0, 1.0, 0.0, 0.0), 2: (6.0, 1.03, 120.0, -60.0)}  # angle °, scale, tx, ty µm
 
 
-def _config(tmp_path, z_spacing_um=7.0):
-    """Ten placeholder slice files and a config for them; returns the config path."""
-    data = tmp_path / "data"
-    data.mkdir(exist_ok=True)
-    for name in SIZES:
-        (data / name).write_text("")
+def _write_config(tmp_path, data, **settings):
     values = {
         "data_dir": str(data),
         "work_dir": str(tmp_path / "work"),
-        "z_spacing_um": z_spacing_um,
+        "z_spacing_um": 7.0,
         "base_downsample": 1,
         "n_levels": 2,
+        **settings,
     }
     path = tmp_path / "project.yaml"
     path.write_text(yaml.safe_dump(values))
     return path
 
 
-def _volume(cfg, *args):
-    cli.main(["--config", str(cfg), "volume", *args])
+def _config(tmp_path, **settings):
+    """Ten placeholder slice files (read through FakeFactory) and a config for them."""
+    data = tmp_path / "data"
+    data.mkdir(exist_ok=True)
+    for name in SIZES:
+        (data / name).write_text("")
+    return _write_config(tmp_path, data, **settings)
+
+
+def _synthetic(tmp_path, monkeypatch, **settings):
+    """Two slices of one synthetic section (the second moved on its slide) as 32x slides, and
+    a config for them; the stages read them through a fake reader."""
+    data = tmp_path / "data"
+    data.mkdir(exist_ok=True)
+    base = make_tissue(seed=5)
+    images = {}
+    for k, (a, s, tx, ty) in MOTIONS.items():
+        (data / f"s_{k}_H.ndpi").write_bytes(f"slice {k}".encode())
+        moved, mm, _ = apply_similarity(base.rgb, base.mask, a, s, tx, ty)
+        images[k] = perturb(moved, mm, seed=k)
+
+    def factory(path):
+        return FakeSlide.from_image(images[int(path.name.split("_")[1])], 32, (2,), MPP)
+
+    read = {"reader_factory": factory}
+    monkeypatch.setattr(cli, "run_preprocess", functools.partial(run_preprocess, **read))
+    monkeypatch.setattr(cli, "build_volume", functools.partial(build_volume, **read))
+    return _write_config(tmp_path, data, base_downsample=32, **settings)
+
+
+def _run(cfg, *args):
+    cli.main(["--config", str(cfg), *args])
+
+
+def _error(cfg, *args):
+    """Run a command that must stop with a one-line `error:` message; returns the message."""
+    with pytest.raises(SystemExit) as exc:
+        _run(cfg, *args)
+    # SystemExit with a message: Python prints it and exits with status 1, without a traceback
+    message = exc.value.code
+    assert isinstance(message, str) and message.startswith("error: ") and "\n" not in message
+    return message
 
 
 def _record(monkeypatch):
     """Replace the volume builder by a recorder of its arguments."""
     calls = []
 
-    def fake(catalog, out, spec, manifest, overwrite):
+    def fake(catalog, out, spec, manifest, overwrite, transforms=None, masks=None):
         ids = [s.id for s in catalog.slices]
-        calls.append({"ids": ids, "out": out, "spec": spec, "overwrite": overwrite})
+        calls.append(
+            {"ids": ids, "out": out, "spec": spec, "overwrite": overwrite, "transforms": transforms}
+        )
         return out
 
     monkeypatch.setattr(cli, "build_volume", fake)
@@ -52,30 +100,45 @@ def _z_spacing(volume):
     return ms["datasets"][0]["coordinateTransformations"][0]["scale"][1]
 
 
+# --- arguments and configuration ------------------------------------------------------------
+
+
 @pytest.mark.parametrize(("text", "ids"), [("3-7", [3, 4, 5, 6, 7]), ("5", [5])])
 def test_slices_select_inclusive_range(tmp_path, monkeypatch, text, ids):
     calls = _record(monkeypatch)
-    _volume(_config(tmp_path), "--slices", text)
+    _run(_config(tmp_path), "volume", "--slices", text, "--unregistered")
     assert [c["ids"] for c in calls] == [ids]
 
 
-@pytest.mark.parametrize("text", ["abc", "3-x", ""])
-def test_malformed_slices_is_usage_error(tmp_path, monkeypatch, capsys, text):
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("abc", "not a slice range"),
+        ("3-x", "not a slice range"),
+        ("", "not a slice range"),
+        ("5-", "not a slice range"),
+        ("4-2", "first slice comes after the last"),
+    ],
+)
+def test_malformed_slices_is_usage_error(tmp_path, monkeypatch, capsys, text, reason):
     calls = _record(monkeypatch)
     with pytest.raises(SystemExit) as exc:
-        _volume(_config(tmp_path), "--slices", text)
+        _run(_config(tmp_path), "volume", "--slices", text, "--unregistered")
     assert exc.value.code == 2  # argparse usage error
-    assert "--slices" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "error: argument --slices" in err and reason in err and "Traceback" not in err
     assert not calls
 
 
 def test_volume_uses_config_and_work_dir(tmp_path, monkeypatch, capsys):
     calls = _record(monkeypatch)
-    _volume(_config(tmp_path), "--slices", "1-2", "--overwrite")
+    cfg = _config(tmp_path, volume_mask_margin_um=30.0)
+    _run(cfg, "volume", "--slices", "1-2", "--overwrite", "--unregistered")
     (call,) = calls
-    assert call["spec"] == VolumeSpec(z_spacing_um=7.0, base_downsample=1, n_levels=2)
+    expected = VolumeSpec(z_spacing_um=7.0, base_downsample=1, n_levels=2, mask_margin_um=30.0)
+    assert call["spec"] == expected
     assert call["out"] == WorkDir(tmp_path / "work").volume
-    assert call["overwrite"] is True
+    assert call["overwrite"] is True and call["transforms"] is None
     assert capsys.readouterr().out.strip() == str(call["out"])
 
 
@@ -83,21 +146,170 @@ def test_existing_volume_with_other_settings_exits_with_message(tmp_path, monkey
     builder = functools.partial(build_volume, reader_factory=FakeFactory(SIZES))
     monkeypatch.setattr(cli, "build_volume", builder)
     volume = WorkDir(tmp_path / "work").volume
-    _volume(_config(tmp_path, z_spacing_um=7.0), "--slices", "1-3")
+    _run(_config(tmp_path, z_spacing_um=7.0), "volume", "--slices", "1-3", "--unregistered")
     cfg = _config(tmp_path, z_spacing_um=5.0)  # other settings
-    with pytest.raises(SystemExit) as exc:
-        _volume(cfg, "--slices", "1-3")
-    # SystemExit with a message: Python prints it and exits with status 1, without a traceback
-    message = exc.value.code
-    assert isinstance(message, str) and message.startswith("error:") and "overwrite" in message
+    assert "overwrite" in _error(cfg, "volume", "--slices", "1-3", "--unregistered")
     assert _z_spacing(volume) == 7.0  # the existing volume is kept
-    _volume(cfg, "--slices", "1-3", "--overwrite")
+    _run(cfg, "volume", "--slices", "1-3", "--unregistered", "--overwrite")
     assert _z_spacing(volume) == 5.0
+
+
+def test_missing_config_file(tmp_path):
+    missing = tmp_path / "nope.yaml"
+    assert _error(missing, "serve") == f"error: config file {missing} not found"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("", "holds no settings"),
+        ("data_dir: [unclosed\n", "is not valid YAML"),
+        ("data_dir: /d\nwork_dir: /w\nbase_downsampel: 8\n", "base_downsampel: unknown setting"),
+        ("data_dir: /d\nwork_dir: /w\n", "z_spacing_um: Field required"),
+    ],
+)
+def test_invalid_config_is_reported(tmp_path, text, expected):
+    path = tmp_path / "project.yaml"
+    path.write_text(text)
+    assert expected in _error(path, "serve")
+
+
+def test_missing_data_dir(tmp_path):
+    cfg = _write_config(tmp_path, tmp_path / "unplugged")
+    assert "is the drive connected" in _error(cfg, "preprocess", "--slices", "1-2")
+
+
+def test_missing_slice_ids(tmp_path):
+    assert _error(_config(tmp_path), "preprocess", "--slices", "8-12").endswith("[11, 12]")
+
+
+def test_programming_errors_keep_their_traceback(tmp_path, monkeypatch):
+    def broken(*args, **kwargs):
+        raise KeyError("bug")
+
+    monkeypatch.setattr(cli, "run_preprocess", broken)
+    with pytest.raises(KeyError):
+        _run(_config(tmp_path), "preprocess", "--slices", "1-2")
+
+
+def test_error_reaches_the_user_without_traceback(tmp_path):
+    missing = tmp_path / "nope.yaml"
+    r = subprocess.run(
+        [str(Path(sys.executable).parent / "brainrec"), "--config", str(missing), "serve"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert r.returncode == 1
+    assert r.stderr == f"error: config file {missing} not found\n"
+
+
+# --- stages ---------------------------------------------------------------------------------
+
+
+def test_stages_build_registered_volume(tmp_path, monkeypatch, capsys):
+    cfg = _synthetic(tmp_path, monkeypatch, volume_mask_margin_um=30.0)
+    work = WorkDir(tmp_path / "work")
+    _run(cfg, "preprocess", "--slices", "1-2")
+    _run(cfg, "register", "--slices", "1-2")
+    _run(cfg, "volume", "--slices", "1-2")
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        "preprocess (slices): 2 done, 0 up to date",
+        "register (pairs): 1 done, 0 up to date; chained to slice 1",
+        str(work.volume),
+    ]
+    attrs = zarr.open_group(str(work.volume), mode="r").attrs["brainrec"]
+    assert attrs["mode"] == "registered" and attrs["reference_slice"] == 1
+    assert attrs["mask_margin_um"] == 30.0
+    chained = Transform2D.load(work.chained_transform(2))
+    used = Transform2D.from_matrix(attrs["slice_to_reference_um"]["2"])
+    assert used.allclose(chained) and not used.allclose(Transform2D.identity())
+
+    _run(cfg, "preprocess", "--slices", "1-2")  # a second run finds everything done
+    _run(cfg, "register", "--slices", "1-2")
+    assert capsys.readouterr().out.splitlines() == [
+        "preprocess (slices): 0 done, 2 up to date",
+        "register (pairs): 0 done, 1 up to date; chained to slice 1",
+    ]
+
+
+def test_stage_results_of_other_settings_need_overwrite(tmp_path, monkeypatch, capsys):
+    _run(_synthetic(tmp_path, monkeypatch), "preprocess", "--slices", "1-2")
+    cfg = _synthetic(tmp_path, monkeypatch, mask_hysteresis=0.6)
+    message = _error(cfg, "preprocess", "--slices", "1-2")
+    assert "other settings" in message and "overwrite" in message
+    _run(cfg, "preprocess", "--slices", "1-2", "--overwrite")
+    assert capsys.readouterr().out.splitlines()[-1] == "preprocess (slices): 2 done, 0 up to date"
+
+
+def test_register_before_preprocess(tmp_path):
+    message = _error(_config(tmp_path), "register", "--slices", "1-2")
+    assert message == "error: slices [1, 2] are not preprocessed; run preprocess first"
+
+
+def test_failed_registration_is_reported(tmp_path, monkeypatch):
+    def failing(*args, **kwargs):
+        raise RegistrationFailedError("pair 1<-2 failed (inliers 3, mask IoU 0.4)")
+
+    monkeypatch.setattr(cli, "run_register", failing)
+    message = _error(_config(tmp_path), "register", "--slices", "1-2")
+    assert message == "error: pair 1<-2 failed (inliers 3, mask IoU 0.4)"
+
+
+def test_volume_before_register(tmp_path, monkeypatch):
+    calls = _record(monkeypatch)
+    message = _error(_config(tmp_path), "volume", "--slices", "1-3")
+    assert message == (
+        "error: slices [1, 2, 3] have no chained transform: "
+        "run `brainrec register --slices 1-3` first, or use --unregistered"
+    )
+    assert not calls
+
+
+def test_volume_refuses_transforms_of_separate_runs(tmp_path, monkeypatch):
+    calls = _record(monkeypatch)
+    work = WorkDir(tmp_path / "work")
+    pair = Transform2D.similarity(0.1, 1.0, 50.0, 0.0)
+    pr = PairResult(1, 2, pair, "features", 100, 80, 15.0, 0.95)
+    write_atomic(work.pair_transform(2), json.dumps(pr.to_dict()).encode())
+    Transform2D.identity().save(work.chained_transform(1))  # a run over slices 1-...
+    Transform2D.identity().save(work.chained_transform(2))  # ... and one over 2-...
+    message = _error(_config(tmp_path), "volume", "--slices", "1-2")
+    assert "slices 1 and 2 were not registered in the same run" in message
+    assert "register --slices 1-2" in message and not calls
+
+
+def test_serve_without_volume(tmp_path):
+    message = _error(_config(tmp_path), "serve")
+    assert message.startswith(f"error: no volume at {WorkDir(tmp_path / 'work').volume}")
 
 
 def test_serve_refuses_volume_without_ome_metadata(tmp_path):
     cfg = _config(tmp_path)
     zarr.open_group(str(WorkDir(tmp_path / "work").volume), mode="w", zarr_format=3)
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["--config", str(cfg), "serve"])
-    assert "no OME-Zarr 0.5 metadata" in str(exc.value.code)
+    assert "no OME-Zarr 0.5 metadata" in _error(cfg, "serve")
+
+
+def test_serve_starts_viewer_and_data_server(tmp_path, monkeypatch, capsys):
+    builder = functools.partial(build_volume, reader_factory=FakeFactory(SIZES))
+    monkeypatch.setattr(cli, "build_volume", builder)
+    cfg = _config(tmp_path)
+    _run(cfg, "volume", "--slices", "1-2", "--unregistered")
+    started = {}
+
+    def viewer(state, port):
+        started["viewer"] = (state, port)
+        return "VIEWER"
+
+    def data_server(app, host, port):
+        started["data"] = (host, port)
+
+    monkeypatch.setattr(cli, "launch_local_viewer", viewer)
+    monkeypatch.setattr(cli.uvicorn, "run", data_server)
+    _run(cfg, "serve", "--port", "8100")
+    state, viewer_port = started["viewer"]
+    assert viewer_port == 8101 and started["data"] == ("127.0.0.1", 8100)
+    assert "http://127.0.0.1:8100/volume.zarr" in json.dumps(state)
+    assert "Viewer (open in Chrome): VIEWER" in capsys.readouterr().out
