@@ -227,6 +227,25 @@ def perturb(rgb: np.ndarray, mask: np.ndarray, seed: int, strength: float = 1.0)
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+def deform_margin(
+    rgb: np.ndarray, mask: np.ndarray, max_deg: float, power: float = 2.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Non-rigid change towards the edge, as on real damaged sections: each ring of the tissue is
+    turned about the tissue centre by an angle growing with its radius, up to `max_deg` at the
+    outermost point. The centre stays in place, so the truth there is the identity."""
+    h, w = mask.shape
+    ys, xs = np.nonzero(mask)
+    cx, cy = xs.mean(), ys.mean()
+    radius = np.hypot(xs - cx, ys - cy).max()
+    gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+    dx, dy = gx - cx, gy - cy
+    theta = -np.radians(max_deg) * (np.hypot(dx, dy) / radius) ** power
+    map_x = (cx + np.cos(theta) * dx - np.sin(theta) * dy).astype(np.float32)
+    map_y = (cy + np.sin(theta) * dx + np.cos(theta) * dy).astype(np.float32)
+    out = cv2.remap(rgb, map_x, map_y, cv2.INTER_LINEAR, borderValue=GLASS.tolist())
+    return out, cv2.remap(mask, map_x, map_y, cv2.INTER_NEAREST, borderValue=0)
+
+
 def as_reg_image(rgb: np.ndarray, mask: np.ndarray, slice_id: int = 0) -> RegImage:
     """Synthetic section as a registration image, made by the real `make_reg_image` (C4), at the
     real registration level (32x, mpp 0.2205 µm)."""

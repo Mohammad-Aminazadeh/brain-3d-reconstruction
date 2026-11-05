@@ -10,12 +10,7 @@ import brainrec.registration.chain as chain_mod
 from brainrec.catalog import Catalog, ProjectConfig
 from brainrec.preprocess import run_preprocess
 from brainrec.registration import PairResult, Transform2D
-from brainrec.registration.chain import (
-    RegistrationFailedError,
-    chain,
-    load_chained,
-    run_register,
-)
+from brainrec.registration.chain import chain, load_chained, run_register
 from brainrec.store import Manifest, StageExistsError, WorkDir, write_atomic
 from tests.synthetic.fake_slide import FakeSlide
 from tests.synthetic.tissue import UM_PER_PX, apply_similarity, make_tissue, perturb
@@ -147,20 +142,25 @@ def test_changed_settings_need_overwrite(tmp_path):
     assert r.done == [2]
 
 
-def test_failed_pair_stops_the_chain(tmp_path):
+def test_failed_pair_does_not_stop_the_run(tmp_path, caplog):
+    """M3-13: a failed pair keeps its best-effort transform and status, is reported, and every
+    slice of the range is still chained (the run never stops at a failure)."""
     cfg, factory, _, _ = _project(tmp_path, unrelated=(3,))
     work = WorkDir(cfg.work_dir)
     stale = work.chained_transform(4)
     stale.parent.mkdir(parents=True, exist_ok=True)
-    Transform2D.identity().save(stale)  # left over from an earlier run
-    with pytest.raises(RegistrationFailedError, match="2<-3"):
-        _run(cfg, factory, (1, 4))
-    assert PairResult.from_dict(json.loads(work.pair_transform(3).read_text())).status == "failed"
-    assert work.chained_transform(2).exists()
-    assert not work.chained_transform(3).exists() and not stale.exists()
-    assert not work.pair_transform(4).exists()  # stopped at the failure
-    with pytest.raises(RegistrationFailedError):  # a rerun reports it again, without recomputing
-        run_register(Catalog.scan(cfg.data_dir, (1, 4)), work, cfg, Manifest(work.manifest))
+    Transform2D.similarity(1.0, 1.0, 99.0, 99.0).save(stale)  # left over from an earlier run
+    with caplog.at_level("WARNING", logger="brainrec.registration.chain"):
+        r, _ = _run(cfg, factory, (1, 4))
+    assert r.done == [2, 3, 4]
+    status = {k: PairResult.from_dict(json.loads(work.pair_transform(k).read_text())).status
+              for k in (2, 3, 4)}  # fmt: skip
+    assert status[2] == "features" and status[3] == "failed"
+    assert "register 2<-3 failed" in caplog.text
+    chained = load_chained(work, [1, 2, 3, 4])  # one chain through the failed pair
+    assert not chained[4].allclose(Transform2D.similarity(1.0, 1.0, 99.0, 99.0))  # replaced
+    again = run_register(Catalog.scan(cfg.data_dir, (1, 4)), work, cfg, Manifest(work.manifest))
+    assert again.skipped == [2, 3, 4] and not again.done  # a rerun recomputes nothing
 
 
 def _write_run(work, ids):

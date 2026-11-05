@@ -15,8 +15,9 @@ class PairScore:
 
     `n_inliers` and `rms_um` (residual of the feature fit, µm; None without a fit) come from
     registration. `ncc` is the normalised cross-correlation of the two registration images where
-    both tissues overlap (1 = identical, -1 if they hardly overlap); `dice` the Dice coefficient
-    of the fixed mask and the warped moving mask (1 = same tissue outline, 0 = disjoint).
+    both tissues overlap, weighted towards the tissue centre as in registration (1 = identical,
+    -1 if they hardly overlap; decision 0004); `dice` the Dice coefficient of the fixed mask and
+    the warped moving mask (1 = same tissue outline, 0 = disjoint; it mostly reflects the edge).
     """
 
     n_inliers: int
@@ -35,8 +36,11 @@ def mask_dice(fixed: np.ndarray, moving: np.ndarray, m_moving_to_fixed: np.ndarr
     return float(2 * (a & b).sum() / total) if total else 0.0
 
 
-def score_pair(fixed: RegImage, moving: RegImage, result: PairResult) -> PairScore:
-    """Score `result` (moving -> fixed) on the two registration images and masks (C4).
+def score_pair(
+    fixed: RegImage, moving: RegImage, result: PairResult, edge_weight: float
+) -> PairScore:
+    """Score `result` (moving -> fixed) on the two registration images and masks (C4);
+    `edge_weight` as `reg_edge_weight`, so QC weights the tissue like registration does.
 
     Raises ValueError if the images are not the pair of `result` or differ in pixel size or level.
     """
@@ -48,7 +52,7 @@ def score_pair(fixed: RegImage, moving: RegImage, result: PairResult) -> PairSco
     if fixed.mpp_um != moving.mpp_um or fixed.downsample != moving.downsample:
         raise ValueError("fixed and moving must share pixel size and level")
     m = result.transform.to_pixels(moving.downsample, fixed.downsample, fixed.mpp_um)
-    ncc = masked_ncc(fixed.image, fixed.mask, moving.image, moving.mask, m)
+    ncc = masked_ncc(fixed.image, fixed.mask, moving.image, moving.mask, m, edge_weight=edge_weight)
     return PairScore(
         result.n_inliers,
         result.rms_um,

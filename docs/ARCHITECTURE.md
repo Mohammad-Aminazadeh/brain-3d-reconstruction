@@ -1,6 +1,6 @@
 # Architecture
 
-Status: approved design; `slides`, `catalog`, `store`, `volume` (unregistered) and `serve` implemented in M2. Updated 2026-10-19 for tissue-only processing (F12) and feature-based registration (F13), see `docs/decisions/0003-tissue-only-feature-based-registration.md`. Interface signatures below are the contract; changing them requires an explicit discussion (see CLAUDE.md).
+Status: approved design; `slides`, `catalog`, `store`, `volume` (unregistered) and `serve` implemented in M2. Updated 2026-10-19 for tissue-only processing (F12) and feature-based registration (F13), see `docs/decisions/0003-tissue-only-feature-based-registration.md`, and 2026-11-04 for centre-first alignment and best effort for failed pairs, see `docs/decisions/0004-centre-first-best-effort-registration.md`. Interface signatures below are the contract; changing them requires an explicit discussion (see CLAUDE.md).
 
 ## 1. Overview
 
@@ -134,27 +134,35 @@ initial_from_masks(fixed_mask, moving_mask) -> (matrix_px, iou)   # centroids, a
 align_outlines(fixed_mask, moving_mask, init_px) -> (matrix_px, iou)  # outline ICP, trimmed similarity
 detect_features(img: RegImage, max_features, detector="orb") -> Features   # inside the mask only
 guided_match(fixed: Features, moving: Features, predict_px, window_px, ratio) -> (src_xy, dst_xy)
-fit_similarity(src_xy, dst_xy, ransac_px) -> Fit | None    # RANSAC + least-squares refit; None if degenerate
+fit_similarity(src_xy, dst_xy, ransac_px, weights=None) -> Fit | None    # RANSAC + (weighted) least-squares refit; None if degenerate
 register_pair(fixed: RegImage, moving: RegImage, cfg) -> PairResult   # implemented (M3-07); the public contract
-    # boundary estimate -> pass 1 at 64x (window 1 mm, twice) -> pass 2 at 32x (window 0.3 mm, twice);
-    # boundary fallback and failure rules per C12
+    # boundary estimate -> pass 1 at 64x (window 1 mm, twice) -> pass 2 at 32x (window 0.3 mm, twice,
+    # with and without centre weights; M3-13); retry with pass-1 window 2.5 mm; candidates, fallback
+    # and failure rules per C12 (best centre-weighted correlation wins)
     # PairResult: transform (moving -> fixed), status ("features" | "boundary" | "failed"),
     #             n_matches, n_inliers, rms_um, mask_iou
 chain(pairs: dict[int, Transform2D], ids: list[int]) -> dict[int, Transform2D]  # implemented (M3-08); reference = ids[0]
 run_register(catalog, work, cfg, manifest, reader_factory=..., overwrite=False) -> StageResult  # implemented (M3-08), C7
-    # raises RegistrationFailedError at a failed pair (C12); StageExistsError if settings changed
+    # registers and chains every pair, failed ones with their best-effort transform (C12, M3-13);
+    # logs a warning per failed pair; StageExistsError if settings changed
 load_chained(work, ids: list[int]) -> dict[int, Transform2D]   # implemented (M3-10), see C5
     # chained transforms of `ids`, checked to form one chain; FileNotFoundError / ValueError
-masked_ncc(fixed, fixed_mask, moving, moving_mask, m_px) -> float   # geometry.py (M3-08); reused by QC
+masked_ncc(fixed, fixed_mask, moving, moving_mask, m_px, blur_px=3, edge_weight=None) -> float   # geometry.py (M3-08); reused by QC
+    # edge_weight: weights pixels by depth in the overlap (M3-13); depth_weights(mask, edge_weight):
+    # edge_weight at the tissue edge rising linearly to 1 at the deepest point (decision 0004)
 correct_drift(...)                                       # post-MVP
 
 # qc                                 # M4, inside the tissue only
-score_pair(fixed: RegImage, moving: RegImage, result: PairResult) -> PairScore   # implemented (M4-01)
+score_pair(fixed: RegImage, moving: RegImage, result: PairResult, edge_weight) -> PairScore   # implemented (M4-01); edge_weight added in M3-13
     # PairScore(n_inliers, rms_um, ncc, dice): registration's inliers and residual (µm), masked_ncc
-    # where both tissues overlap, Dice of the fixed and warped moving masks; mask_dice(fixed, moving, m_px)
+    # where both tissues overlap, centre-weighted like registration (decision 0004), Dice of the fixed and warped moving masks; mask_dice(fixed, moving, m_px)
 render_overlay(fixed: RegImage, moving: RegImage, t: Transform2D, out: Path) -> Path  # implemented (M4-02)
     # PNG at registration level in the fixed frame: fixed green, warped moving magenta, grey where
     # they agree, background black, tissue outlines in the same colours; overlay_rgb(...) -> array
+build_report(work, ids, pairs: dict[int, tuple[PairResult, PairScore]], cfg) -> dict  # implemented (M4-03), C10
+    # pairs keyed by moving id; ValueError if a consecutive pair is missing, of another neighbour or
+    # outside the range; flagged = is_flagged(score, qc_min_ncc, qc_min_dice): a score below its
+    # threshold (None = not checked). write_report(work, report) -> qc/report.json, atomic
 apply_override(...)                                      # post-MVP
 
 # store                              # implemented (M2)
@@ -201,7 +209,8 @@ brainrec --config C volume --slices A-B [--overwrite] [--unregistered]
     # registered, tissue-only (C8, C11) from load_chained and the masks; --unregistered = M2 mode
 brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512]   # viewer on port+1
     # --slices: A-B or N. User errors (config, slice range, missing step, other settings without
-    # --overwrite, failed pair, drive not connected) end with one line `error: ...`, exit status 1;
+    # --overwrite, drive not connected) end with one line `error: ...`, exit status 1; a failed pair
+    # is not an error: `register` names it in a warning line and exits 0 (M3-13);
     # other exceptions are bugs and keep their traceback.
 brainrec run [--stage S] [--slices A-B]                # M5
 brainrec status                                        # M5
@@ -284,13 +293,15 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 | `reg_max_rms_um` | 25.0 | spike: 16 to 19 µm observed |
 | `boundary_min_iou` | 0.80 | spike: 0.83 to 0.98 observed |
 | `reg_ncc_tolerance` | 0.01 | M3-08: feature fit may correlate at most this much worse than the outline estimate |
+| `reg_edge_weight` | 0.2 (Proposed) | M3-13, decision 0004: weight of the tissue edge relative to the centre (1) in fits and correlations |
+| `reg_retry_window_um` | 2500 | M3-13: pass-1 window of the second attempt; the spike's window |
 | `mask_hysteresis` | 0.75 | to be validated in M3-04 |
 | `mask_min_component_mm2` | 0.25 | spike: fragments 0.6 to 2.8 mm², specks below 0.2 |
 | `volume_mask_margin_um` | 50 | decision 9; `VolumeSpec.mask_margin_um` (M3-09) |
 | `qc_min_dice` | 0.90 | spike masks: flagged the damaged pairs 3→4, 4→5, 5→6; with the M3-04 masks real Dice is 0.904 to 0.981 and 0.90 flags none (M4-01), so it is recalibrated in M4-05 |
-| `qc_min_ncc` | none until M4-05 | calibrated on real data |
+| `qc_min_ncc` | None (not checked) until M4-05 | calibrated on real data; field added in M4-03, as `qc_min_dice` |
 
-**C10 QC report.** `qc/report.json`: `{"schema": "brainrec.qc/1", "thresholds", "pairs": [{"fixed", "moving", "status", "n_inliers", "rms_um", "ncc", "dice", "flagged", "overlay"}]}`.
+**C10 QC report.** `qc/report.json`: `{"schema": "brainrec.qc/1", "thresholds", "pairs": [{"fixed", "moving", "status", "n_inliers", "rms_um", "ncc", "dice", "flagged", "overlay"}]}`. `flagged`: status `failed` (M3-13), or a score below its threshold.
 
 **C11 Tissue-only volume.**
 - A voxel is tissue if it lies inside its slice's mask, warped by the slice's transform and enlarged by `volume_mask_margin_um`.
@@ -302,9 +313,10 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 **C12 Acceptance and failure rules per pair.**
 - **`features`:** pass-2 inliers ≥ `reg_min_inliers`, rms ≤ `reg_max_rms_um`, **and** mask IoU of the result ≥ `boundary_min_iou`. The last condition was added in M3-07: without it, an unrelated pair was accepted with 47 consistent but spurious matches (scale 0.39, IoU 0.09). Real pairs 1 to 10 all pass (lowest IoU 0.825).
   - **and** (added in M3-08) the masked correlation of the result is at least that of the outline estimate minus `reg_ncc_tolerance`. On real pair 4→5 the method once drifted to a precise fit of one region of the unevenly deformed section (−12.7°, correlation 0.246 against 0.284 for the outline estimate); the IoU check alone let it pass (0.811). Together with the narrower pass-1 window (1 mm instead of 2.5 mm, pass 1 run twice) the pair now registers at +3.3°, in line with the spike.
-- **`boundary`:** otherwise, outline alignment (iterative closest point on the two tissue outlines, similarity, starting from the boundary estimate) is used if its mask IoU ≥ `boundary_min_iou`.
-- **`failed`:** neither passes. `register` stops at the failed pair and reports it; no chained transform is written past it. A wrong transform is never accepted silently.
-- QC separately flags pairs whose mask Dice is below `qc_min_dice`.
+  - **Centre first (M3-13, decision 0004):** the correlations are weighted by depth in the tissue (`reg_edge_weight` at the edge, 1 at the centre). Pass 2 runs with and without centre-weighted refits; of the fits that pass, the one with the higher weighted correlation is kept. If none passes, matching is repeated once with a pass-1 window of `reg_retry_window_um`.
+- **`boundary`:** otherwise the outline alignment (iterative closest point on the two tissue outlines, similarity, starting from the boundary estimate) and the outline estimate join the failed feature fits as candidates; the one with the highest centre-weighted correlation is used, with status `boundary` if its mask IoU ≥ `boundary_min_iou`. (Until M3-13 the outline alignment was taken whenever its IoU passed; on real damaged pairs it is 0.9 to 1.3 mm off in the interior.)
+- **`failed`:** the chosen candidate's IoU is below `boundary_min_iou`. It is still used as a best effort (M3-13): `register` chains every pair, warns about each failed pair and exits 0; the pair file keeps status `failed`. Nothing is accepted silently: QC always flags failed pairs.
+- QC separately flags pairs whose scores are below `qc_min_ncc` or `qc_min_dice` (C10).
 
 ## 6. Technology decisions
 

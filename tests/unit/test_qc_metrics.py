@@ -2,11 +2,13 @@ import cv2
 import numpy as np
 import pytest
 
+from brainrec.catalog import ProjectConfig
 from brainrec.qc.metrics import mask_dice, score_pair
 from brainrec.registration import PairResult, RegImage, Transform2D
 from tests.synthetic.tissue import DEBRIS, UM_PER_PX, apply_similarity, as_reg_image, make_tissue
 
 SEEDS = [0, 1, 2, 3]
+EDGE = ProjectConfig(data_dir=".", work_dir=".", z_spacing_um=5.0).reg_edge_weight
 
 
 def _result(t: Transform2D, fixed: int = 1, moving: int = 2) -> PairResult:
@@ -24,15 +26,15 @@ def _section(seed: int, slice_id: int, detail_seed: int | None = None) -> RegIma
 
 @pytest.mark.parametrize("seed", SEEDS)
 def test_identical_images_score_one(seed):
-    s = score_pair(_section(seed, 1), _section(seed, 2), _result(Transform2D.identity()))
+    s = score_pair(_section(seed, 1), _section(seed, 2), _result(Transform2D.identity()), EDGE)
     assert (s.ncc, s.dice) == (1.0, 1.0)
 
 
 def test_registration_numbers_are_passed_through():
-    s = score_pair(_section(0, 1), _section(0, 2), _result(Transform2D.identity()))
+    s = score_pair(_section(0, 1), _section(0, 2), _result(Transform2D.identity()), EDGE)
     assert (s.n_inliers, s.rms_um) == (120, 17.5)
     no_fit = PairResult(1, 2, Transform2D.identity(), "boundary", 0, 0, None, 0.9)
-    assert score_pair(_section(0, 1), _section(0, 2), no_fit).rms_um is None
+    assert score_pair(_section(0, 1), _section(0, 2), no_fit, EDGE).rms_um is None
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -40,8 +42,8 @@ def test_ten_pixel_misalignment_scores_clearly_lower(seed):
     a = make_tissue(seed=seed)
     moved, moved_mask, truth = apply_similarity(a.rgb, a.mask, 0.0, 1.0, 10 * UM_PER_PX, 0.0)
     fixed, moving = as_reg_image(a.rgb, a.mask, 1), as_reg_image(moved, moved_mask, 2)
-    right = score_pair(fixed, moving, _result(truth))
-    wrong = score_pair(fixed, moving, _result(Transform2D.identity()))  # off by 10 px
+    right = score_pair(fixed, moving, _result(truth), EDGE)
+    wrong = score_pair(fixed, moving, _result(Transform2D.identity()), EDGE)  # off by 10 px
     assert right.ncc > 0.99 and right.dice > 0.99
     assert wrong.ncc < right.ncc - 0.3  # measured 0.54 to 0.59
     assert wrong.dice < right.dice - 0.02  # measured 0.964 to 0.968
@@ -54,7 +56,7 @@ def test_scores_follow_the_transform(seed):
     a = make_tissue(seed=seed)
     moved, moved_mask, truth = apply_similarity(a.rgb, a.mask, 30.0, 1.05, 100.0, -50.0)
     s = score_pair(
-        as_reg_image(a.rgb, a.mask, 1), as_reg_image(moved, moved_mask, 2), _result(truth)
+        as_reg_image(a.rgb, a.mask, 1), as_reg_image(moved, moved_mask, 2), _result(truth), EDGE
     )
     assert s.ncc > 0.95 and s.dice > 0.98
 
@@ -63,9 +65,9 @@ def test_scores_follow_the_transform(seed):
 def test_neighbouring_sections_rank_between_misaligned_and_unrelated(seed):
     """Neighbouring sections (same geometry, different cells): aligned > 10 px off > unrelated."""
     fixed, neighbour = _section(seed, 1), _section(seed, 2, detail_seed=7)
-    aligned = score_pair(fixed, neighbour, _result(Transform2D.identity()))
-    off = score_pair(fixed, neighbour, _result(_shift(10)))
-    unrelated = score_pair(fixed, _section(seed + 10, 2), _result(Transform2D.identity()))
+    aligned = score_pair(fixed, neighbour, _result(Transform2D.identity()), EDGE)
+    off = score_pair(fixed, neighbour, _result(_shift(10)), EDGE)
+    unrelated = score_pair(fixed, _section(seed + 10, 2), _result(Transform2D.identity()), EDGE)
     assert aligned.ncc > off.ncc + 0.1 > unrelated.ncc + 0.2
     assert aligned.dice > off.dice > unrelated.dice
 
@@ -74,11 +76,11 @@ def test_neighbouring_sections_rank_between_misaligned_and_unrelated(seed):
 def test_unrelated_images_score_lowest(seed):
     fixed = _section(seed, 1)
     ident = Transform2D.identity()
-    unrelated = score_pair(fixed, _section(seed + 10, 2), _result(ident))
+    unrelated = score_pair(fixed, _section(seed + 10, 2), _result(ident), EDGE)
     others = [
-        score_pair(fixed, _section(seed, 2), _result(ident)),
-        score_pair(fixed, _section(seed, 2), _result(_shift(10))),
-        score_pair(fixed, _section(seed, 2, detail_seed=7), _result(ident)),
+        score_pair(fixed, _section(seed, 2), _result(ident), EDGE),
+        score_pair(fixed, _section(seed, 2), _result(_shift(10)), EDGE),
+        score_pair(fixed, _section(seed, 2, detail_seed=7), _result(ident), EDGE),
     ]
     assert all(unrelated.ncc < s.ncc and unrelated.dice < s.dice for s in others)
     assert unrelated.ncc < 0.2
@@ -94,8 +96,8 @@ def test_only_tissue_counts():
     assert (dirty != a.rgb).any()
     fixed = as_reg_image(a.rgb, a.mask, 1)
     t = _result(_shift(3))
-    clean = score_pair(fixed, as_reg_image(a.rgb, a.mask, 2), t)
-    assert score_pair(fixed, as_reg_image(dirty, a.mask, 2), t) == clean
+    clean = score_pair(fixed, as_reg_image(a.rgb, a.mask, 2), t, EDGE)
+    assert score_pair(fixed, as_reg_image(dirty, a.mask, 2), t, EDGE) == clean
 
 
 def test_mask_dice_known_values():
@@ -111,11 +113,11 @@ def test_mask_dice_known_values():
 
 def test_rejects_images_of_another_pair():
     with pytest.raises(ValueError, match="not pair 1<-2"):
-        score_pair(_section(0, 1), _section(0, 3), _result(Transform2D.identity()))
+        score_pair(_section(0, 1), _section(0, 3), _result(Transform2D.identity()), EDGE)
 
 
 def test_rejects_mismatched_levels():
     fixed, moving = _section(0, 1), _section(0, 2)
     coarse = RegImage(2, moving.image, moving.mask, 64.0, moving.mpp_um)
     with pytest.raises(ValueError, match="share pixel size and level"):
-        score_pair(fixed, coarse, _result(Transform2D.identity()))
+        score_pair(fixed, coarse, _result(Transform2D.identity()), EDGE)

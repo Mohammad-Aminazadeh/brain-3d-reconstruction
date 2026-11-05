@@ -6,6 +6,8 @@ status 1; anything else is a bug and keeps its traceback.
 """
 
 import argparse
+import itertools
+import json
 import logging
 import sys
 from pathlib import Path
@@ -17,8 +19,8 @@ from pydantic import ValidationError
 
 from brainrec.catalog import Catalog, ProjectConfig
 from brainrec.preprocess import run_preprocess
-from brainrec.registration import Transform2D
-from brainrec.registration.chain import RegistrationFailedError, load_chained, run_register
+from brainrec.registration import PairResult, Transform2D
+from brainrec.registration.chain import load_chained, run_register
 from brainrec.serve import create_app, hosted_url, launch_local_viewer, neuroglancer_state
 from brainrec.store import Manifest, StageExistsError, StageResult, WorkDir
 from brainrec.volume import VolumeExistsError, VolumeSpec, build_volume
@@ -29,7 +31,7 @@ class CliError(Exception):
 
 
 # never bugs: reported in one line, without a traceback
-USER_ERRORS = (CliError, OSError, StageExistsError, VolumeExistsError, RegistrationFailedError)
+USER_ERRORS = (CliError, OSError, StageExistsError, VolumeExistsError)
 
 
 def _range(text: str) -> tuple[int, int]:
@@ -111,6 +113,14 @@ def _register(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> No
     catalog = _catalog(cfg, args.slices)
     result = run_register(catalog, work, cfg, Manifest(work.manifest), overwrite=args.overwrite)
     _summary("register", result, "pairs", f"; chained to slice {catalog.slices[0].id}")
+    ids = [s.id for s in catalog.slices]
+    failed = [
+        f"{prev}<-{k}"
+        for prev, k in itertools.pairwise(ids)
+        if PairResult.from_dict(json.loads(work.pair_transform(k).read_text())).status == "failed"
+    ]
+    if failed:  # best effort, chained anyway (M3-13)
+        print(f"warning: pairs {', '.join(failed)} failed; best-effort alignment, check them in QC")
 
 
 def _registration(work: WorkDir, ids: list[int]) -> tuple[dict[int, Transform2D], dict[int, Path]]:

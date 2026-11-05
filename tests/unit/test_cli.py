@@ -11,8 +11,7 @@ import zarr
 from brainrec.pipeline import cli
 from brainrec.preprocess import run_preprocess
 from brainrec.registration import PairResult, Transform2D
-from brainrec.registration.chain import RegistrationFailedError
-from brainrec.store import WorkDir, write_atomic
+from brainrec.store import StageResult, WorkDir, write_atomic
 from brainrec.volume import VolumeSpec, build_volume
 from tests.synthetic.fake_slide import FakeFactory, FakeSlide
 from tests.synthetic.tissue import apply_similarity, make_tissue, perturb
@@ -249,13 +248,21 @@ def test_register_before_preprocess(tmp_path):
     assert message == "error: slices [1, 2] are not preprocessed; run preprocess first"
 
 
-def test_failed_registration_is_reported(tmp_path, monkeypatch):
-    def failing(*args, **kwargs):
-        raise RegistrationFailedError("pair 1<-2 failed (inliers 3, mask IoU 0.4)")
+def test_failed_pair_is_reported_but_does_not_stop(tmp_path, monkeypatch, capsys):
+    """M3-13: a failed pair ends in a warning naming it, exit status 0."""
 
-    monkeypatch.setattr(cli, "run_register", failing)
-    message = _error(_config(tmp_path), "register", "--slices", "1-2")
-    assert message == "error: pair 1<-2 failed (inliers 3, mask IoU 0.4)"
+    def register(catalog, work, cfg, manifest, overwrite):
+        for k, status in ((2, "features"), (3, "failed")):
+            pr = PairResult(k - 1, k, Transform2D.identity(), status, 10, 3, None, 0.4)
+            write_atomic(work.pair_transform(k), json.dumps(pr.to_dict()).encode())
+        return StageResult(done=[2, 3])
+
+    monkeypatch.setattr(cli, "run_register", register)
+    _run(_config(tmp_path), "register", "--slices", "1-3")
+    assert capsys.readouterr().out.splitlines()[-2:] == [
+        "register (pairs): 2 done, 0 up to date; chained to slice 1",
+        "warning: pairs 2<-3 failed; best-effort alignment, check them in QC",
+    ]
 
 
 def test_volume_before_register(tmp_path, monkeypatch):

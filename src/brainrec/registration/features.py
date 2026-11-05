@@ -71,8 +71,14 @@ def guided_match(
     return np.array(src, float).reshape(-1, 2), np.array(dst, float).reshape(-1, 2)
 
 
-def fit_similarity(src: np.ndarray, dst: np.ndarray, ransac_px: float) -> Fit | None:
-    """RANSAC similarity fit, then a least-squares refit on the inliers (precision step)."""
+def fit_similarity(
+    src: np.ndarray, dst: np.ndarray, ransac_px: float, weights: np.ndarray | None = None
+) -> Fit | None:
+    """RANSAC similarity fit, then a least-squares refit on the inliers (precision step).
+
+    `weights` (one per match) weight the refit, so heavily weighted matches (the tissue centre,
+    decision 0004) are fitted most closely; `rms_px` is the plain residual of the inliers.
+    """
     if len(src) < 3:
         return None
     m, inl = cv2.estimateAffinePartial2D(
@@ -83,7 +89,7 @@ def fit_similarity(src: np.ndarray, dst: np.ndarray, ransac_px: float) -> Fit | 
         return None
     keep = inl.ravel().astype(bool)
     for _ in range(3):  # refit on inliers; re-select inliers with the refined model
-        m = umeyama_similarity(src[keep], dst[keep])
+        m = umeyama_similarity(src[keep], dst[keep], None if weights is None else weights[keep])
         err = np.hypot(*(apply_px(m, src) - dst).T)
         new = err < ransac_px
         if new.sum() < 3 or np.array_equal(new, keep):

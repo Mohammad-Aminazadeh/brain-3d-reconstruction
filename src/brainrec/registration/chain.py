@@ -15,11 +15,8 @@ from brainrec.store import Manifest, StageExistsError, StageResult, WorkDir, wri
 
 log = logging.getLogger(__name__)
 STAGE = "register"
-VERSION = 1  # bump when the algorithm changes in a way that should invalidate old results
-
-
-class RegistrationFailedError(RuntimeError):
-    """A pair could not be registered (C12); nothing is chained past it."""
+VERSION = 2  # bump when the algorithm changes in a way that should invalidate old results
+# 2 (M3-13): centre-weighted fit and correlation, retry, best effort for failed pairs
 
 
 def chain(pairs: dict[int, Transform2D], ids: list[int]) -> dict[int, Transform2D]:
@@ -81,7 +78,11 @@ def run_register(
     overwrite: bool = False,
 ) -> StageResult:
     """Register every consecutive pair of `catalog`, then write chained transforms to its first
-    slice. `StageResult.done` / `.skipped` list moving-slice ids of pairs."""
+    slice. `StageResult.done` / `.skipped` list moving-slice ids of pairs.
+
+    A failed pair does not stop the run (M3-13): it keeps its best-effort transform and status
+    `failed` in its pair file, is logged as a warning, and is chained like any other pair.
+    """
     ids = [s.id for s in catalog.slices]
     signature = _signature(cfg)
     state = manifest.get(STAGE)
@@ -96,7 +97,7 @@ def run_register(
 
     result = StageResult()
     pairs: dict[int, Transform2D] = {}
-    failed: PairResult | None = None
+    failed: list[PairResult] = []
     for fixed, moving in itertools.pairwise(ids):
         key = _pair_inputs(pre, fixed, moving)
         path = work.pair_transform(moving)
@@ -106,8 +107,7 @@ def run_register(
                 result.skipped.append(moving)
                 pairs[moving] = pr.transform
                 if pr.status == "failed":
-                    failed = pr
-                    break
+                    failed.append(pr)
                 continue
         pr = register_pair(RegImage.load(work, fixed), RegImage.load(work, moving), cfg)
         write_atomic(path, json.dumps(pr.to_dict(), indent=2).encode())
@@ -122,17 +122,14 @@ def run_register(
         )  # fmt: skip
         pairs[moving] = pr.transform
         if pr.status == "failed":
-            failed = pr
-            break
+            failed.append(pr)
 
-    chained_ids = ids[: ids.index(failed.moving)] if failed else ids
-    for k, t in chain(pairs, chained_ids).items():
+    for k, t in chain(pairs, ids).items():
         write_atomic(work.chained_transform(k), json.dumps(t.to_dict(), indent=2).encode())
-    for k in ids[len(chained_ids) :]:  # nothing chained past a failed pair, not even stale files
-        work.chained_transform(k).unlink(missing_ok=True)
-    if failed:
-        raise RegistrationFailedError(
-            f"pair {failed.fixed}<-{failed.moving} failed (inliers {failed.n_inliers}, "
-            f"mask IoU {failed.mask_iou}); slices {failed.moving} and later are not chained"
-        )
+    for pr in failed:
+        log.warning(
+            "register %d<-%d failed (inliers %d, mask IoU %.3f): chained with its best-effort "
+            "transform; check it in QC",
+            pr.fixed, pr.moving, pr.n_inliers, pr.mask_iou,
+        )  # fmt: skip
     return result

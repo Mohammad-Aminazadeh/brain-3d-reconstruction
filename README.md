@@ -36,8 +36,8 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 | Environment set up (M0) | Done: .venv, dependencies, package skeleton, lint and type checks |
 | M1 data characterisation | Done (see docs/REQUIREMENTS.md section 7) |
 | M2 unregistered volume | Done: slices 1 to 10 (19.5 GB, 11.5 min), checked in Neuroglancer |
-| M3 registration | Done (2026-11-03): spike (M3-06), contracts (M3-00), transform model (M3-05), synthetic data (M3-02), pairwise registration (M3-07), work-dir layout (M3-01), tissue mask (M3-04), preprocessing stage (M3-03), register stage (M3-08), registered volume builder (M3-09), interim CLI (M3-10) and transparent background (M3-12) done; real registered volume of slices 1 to 10 (M3-11, 12 min, 15.4 GB) reviewed by the owner; feature-based, tissue-only, similarity (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
-| M4 quality control | In progress: pair score (M4-01) and overlay image (M4-02) done |
+| M3 registration | Done (2026-11-03): spike (M3-06), contracts (M3-00), transform model (M3-05), synthetic data (M3-02), pairwise registration (M3-07), work-dir layout (M3-01), tissue mask (M3-04), preprocessing stage (M3-03), register stage (M3-08), registered volume builder (M3-09), interim CLI (M3-10), transparent background (M3-12) and centre-first alignment with best effort for failed pairs (M3-13) done; real registered volume of slices 1 to 10 (M3-11, 12 min, 15.4 GB) reviewed by the owner; feature-based, tissue-only, similarity (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
+| M4 quality control | In progress: pair score (M4-01), overlay image (M4-02) and QC report with flags (M4-03) done |
 
 ## Usage (current)
 
@@ -53,6 +53,7 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 ```
 
 - Each stage resumes: a second run skips finished slices and pairs. `--overwrite` redoes results made with other settings, or replaces a volume built from other inputs; nothing is replaced without it.
+- `register` never stops at a pair it cannot align reliably: it uses the best match of the tissue centre, prints `warning: pairs ... failed`, and QC flags those pairs. The centre is aligned most precisely; errors may grow towards the edge.
 - `volume` needs the slices registered together in one `register` run; `volume --unregistered` stacks the whole scans without registration, as in M2.
 - Mistakes such as a missing slice, a misspelled setting in the config or a missing step end with a one-line `error: ...` message that says what to do.
 
@@ -75,7 +76,7 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 - [tasks/BACKLOG.md](tasks/BACKLOG.md): work breakdown with task status.
 - [tasks/IMPLEMENTATION_PLAN.md](tasks/IMPLEMENTATION_PLAN.md): order of implementation, critical path, contracts.
 - [results/](results/README.md): result figures for presentations (compressed copies; originals on the work drive).
-- [docs/decisions/](docs/decisions/): decision records (storage format, local viewer, tissue-only feature-based registration).
+- [docs/decisions/](docs/decisions/): decision records (storage format, local viewer, tissue-only feature-based registration, centre-first alignment).
 
 ## Data
 

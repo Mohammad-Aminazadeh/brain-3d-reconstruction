@@ -19,6 +19,8 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 | F11 | Drift correction over the chain of 140 slices | Proposed |
 | F12 | **Tissue only.** The empty glass around the tissue is ignored: alignment uses only tissue, and the final volume contains only tissue (background removed, volume limited to the tissue extent) | Confirmed (owner, 2026-10-19) |
 | F13 | **Feature-based alignment.** Alignment detects edges and features (tissue boundaries and internal structures) in each image, finds the corresponding features in consecutive images and aligns the images by them | Confirmed (owner, 2026-10-19) |
+| F14 | **Centre first.** The tissue centre must align as precisely as possible; errors may grow towards the boundary, where they matter less, but are minimised everywhere (see `docs/decisions/0004-centre-first-best-effort-registration.md`) | Confirmed (owner, 2026-11-04) |
+| F15 | **No stop on a bad pair.** A pair that cannot be aligned reliably does not stop the run: it gets the best possible alignment and is flagged for review | Confirmed (owner, 2026-11-04) |
 
 ## 2. Non-functional requirements
 

@@ -50,10 +50,11 @@ Conventions that apply to every task (not repeated below):
 | M3-09 | Volume builder with transforms, tissue only | volume | High | Done | M3-05, M2-05 (M3-04 soft) |
 | M3-10 | Interim CLI: `preprocess`, `register` | pipeline | Low | Done | M3-08, M3-09, M2-11 |
 | M3-12 | Transparent background in the viewer | serve | Low | Done | M3-09 |
+| M3-13 | Centre-first alignment, best effort for failed pairs | registration | Medium | Done | M3-11 |
 | M3-11 | Real registration, slices 1 to 10 | integration | Medium | Done | M3-10, M3-12, M2-10, M3-06 |
 | M4-01 | Pair score | qc | Medium | Done | M3-05, M3-02 |
 | M4-02 | Overlay image | qc | Low | Done | M3-05 |
-| M4-03 | QC report and flags | qc | Low | To do | M4-01, M4-02, M3-01 |
+| M4-03 | QC report and flags | qc | Low | Done | M4-01, M4-02, M3-01 |
 | M4-04 | `brainrec qc` command | pipeline | Low | To do | M4-03 |
 | M4-05 | Real QC review, slices 1 to 10 | integration | Medium | To do | M4-04, M3-11 |
 | M5-01 | Stage runner with resume | pipeline | Medium | To do | M3-10, M4-04 |
@@ -490,6 +491,28 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: serve
 
+#### M3-13 Centre-first alignment, best effort for failed pairs · Medium · Done
+- **Objective:** A failed pair must not stop the run; the tissue centre must align best, errors may grow towards the edge but are minimised everywhere (owner, 2026-11-04). Decision: `docs/decisions/0004-centre-first-best-effort-registration.md`.
+- **Inputs:** registration images, masks. **Outputs:** pair results with best-effort transforms; all slices chained.
+- **Depends on:** M3-11. **Files:** `registration/{geometry,features,pairwise,chain}.py`, `qc/{metrics,report}.py`, `catalog/config.py`, `pipeline/cli.py`.
+- **Acceptance:** on a synthetic section deformed at the edge, the centre aligns better than with an unweighted fit; a failed pair keeps the best centre match among all candidates and the run continues; a retry with a wider window rescues a far-off start; QC flags failed pairs; no real pair of slices 1 to 10 gets worse by the centre-weighted correlation.
+- **Tests:** `test_geometry.py` (new), `test_pairwise.py`, `test_chain.py`, `test_cli.py`, `test_qc_report.py`.
+- **Result (2026-11-04):**
+  - **Code:**
+    - `depth_weights` (edge `reg_edge_weight`, Proposed 0.2, rising linearly to 1 at the deepest point);
+    - weighted `umeyama_similarity` / `fit_similarity`;
+    - `masked_ncc(..., edge_weight)`;
+    - pass 2 run with and without centre weights, best centre-weighted correlation wins;
+    - retry with `reg_retry_window_um` (2500 µm);
+    - best-effort candidate choice (feature fits, outline alignment, outline estimate);
+    - `run_register` no longer stops, warns per failed pair; `RegistrationFailedError` removed;
+    - CLI prints `warning: pairs ... failed` and exits 0;
+    - `score_pair` takes the edge weight; QC always flags failed pairs;
+    - register stage version 2 (existing results need `register --overwrite`).
+  - **Tests:** 12 new (6 geometry, 3 centre priority on deformed sections, retry, best candidate, failed always flagged); the stop-at-failure tests of `test_chain.py` and `test_cli.py` rewritten for the new rule; all other tests unchanged. Mutation check: 8 deliberate faults (weights ignored in the fit, in the correlation or in `fit_similarity`, last instead of best fit, outline instead of best candidate, no retry, resume stopping at a failure, failed pair not flagged) each caught.
+  - **Synthetic:** on sections turned more and more towards the edge (centre fixed, up to 6°), the centre error is 0.95 px against 1.11 to 1.18 px unweighted; even edge weight 0 leaves about 0.8 px, which is deformation a similarity cannot follow.
+  - **Real slices 1 to 10 (in memory, before `register --overwrite`):** all 9 pairs stay `features`. Centre-weighted correlation never drops: unchanged on 1→2, 3→4, 8→9, 9→10 (same transform), up to +0.005 elsewhere; the centre moves by 2 to 35 µm (5→6: 35 µm, 0.372 → 0.377). Weighting alone (without the choice) moved weak pair 3→4 by 192 µm to a worse centre match (0.450 → 0.430, right ventricle doubled), hence the choice. Time per pair 15 s instead of 9 s.
+
 #### M3-12 Transparent background in the viewer · Low · Done
 - **Objective:** Show everything outside the tissue as transparent, so empty space contrasts with the tissue (owner decision, 2026-10-19).
 - **Inputs:** a volume in which background voxels are exactly (255, 255, 255) and tissue voxels never are (C11, M3-09f). **Outputs:** Neuroglancer shader: transparent where all three channels are 255, RGB colour elsewhere; dark panel background for contrast.
@@ -569,12 +592,17 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
   - **Real pairs 5→6 and 8→9** (scratch, not in the work dir): 0.6 s each, 4368 × 3192 px, about 20 MB per PNG. 8→9 is grey with coinciding outlines; 5→6 shows the damaged margins in green and magenta.
   - **Inlier positions not marked (owner decision, 2026-11-03):** registration keeps only the inlier count (neither `Fit` nor the pair file C5 stores positions), and the ARCHITECTURE signature takes none. Storing them would change the pair file format, recomputing them in QC would not reproduce registration's inliers; the overlay shows the alignment, and the count goes into the QC report (M4-03).
 
-#### M4-03 QC report and flags · Low · To do
+#### M4-03 QC report and flags · Low · Done
 - **Objective:** One report listing every pair, its scores and a flag.
 - **Inputs:** scores; thresholds `qc_min_ncc`, `qc_min_dice` in `ProjectConfig`. **Outputs:** `qc/report.json`.
 - **Depends on:** M4-01, M4-02, M3-01. **Files:** `src/brainrec/qc/report.py`, `src/brainrec/catalog/config.py` (two fields).
 - **Acceptance:** every consecutive pair present; flag set exactly when a score is below its threshold.
 - **Tests:** `tests/unit/test_qc_report.py`.
+- **Result (2026-11-03):**
+  - **Code:** `src/brainrec/qc/report.py`: `build_report(work, ids, pairs, cfg)` returns the C10 report (pairs keyed by moving id, in slice order, overlay paths relative to the work dir); `is_flagged(score, min_ncc, min_dice)`; `write_report(work, report)` writes `qc/report.json` atomically. `ValueError` if a consecutive pair is missing, belongs to another neighbour (another register run) or lies outside the range. Config: `qc_min_ncc` (default None = not checked) and `qc_min_dice` (default 0.90), both may be set to null.
+  - **Tests:** 17 report tests (pairs complete and ordered, C10 fields, thresholds recorded, flag truth table including values at the threshold and switched-off thresholds, only the weak pair flagged, status reported, single slice, missing / extra / wrong-neighbour pairs, JSON round trip without temporary file) and 1 config test. Mutation check: 9 deliberate faults each caught.
+  - **Real slices 1 to 10 (built in memory, not written):** all 9 pairs present; with the current thresholds (NCC not checked, Dice 0.90) no pair is flagged, as expected from M4-01. Choosing the thresholds is M4-05.
+  - **Changed by M3-13:** a `failed` pair is always flagged (its transform is a best effort); registration no longer stops at a failed pair, so every pair of the range is in the report.
 
 ### Component: pipeline
 

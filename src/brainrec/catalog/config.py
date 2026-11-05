@@ -29,6 +29,10 @@ class ProjectConfig(BaseModel):
     reg_max_rms_um: float = 25.0
     boundary_min_iou: float = 0.80
     reg_ncc_tolerance: float = 0.01  # feature fit may not correlate clearly worse than the outline
+    # weight of the tissue edge relative to the centre (1) in fits and correlations: the centre
+    # must align best, the edge still counts (owner, 2026-11-04; decision 0004). Proposed value.
+    reg_edge_weight: float = 0.2
+    reg_retry_window_um: float = 2500.0  # pass-1 window of the second attempt of a failing pair
 
     # tissue mask (contract C4, C9; decision 14: detached fragments are tissue)
     mask_hysteresis: float = 0.75  # pale pixels >= this x threshold count if connected to tissue
@@ -36,6 +40,11 @@ class ProjectConfig(BaseModel):
 
     # registered volume (contract C9, C11; decision 9: a rim of up to about 50 µm is accepted)
     volume_mask_margin_um: float = 50.0
+
+    # quality control (contract C9, C10): a pair is flagged when a score is below its threshold;
+    # None = not checked. Both are calibrated on real data in M4-05.
+    qc_min_ncc: float | None = None
+    qc_min_dice: float | None = 0.90  # spike value; flags none of the real pairs 1 to 10 (M4-01)
 
     @classmethod
     def load(cls, path: Path) -> "ProjectConfig":

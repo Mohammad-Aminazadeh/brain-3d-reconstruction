@@ -61,3 +61,10 @@ def test_rejects_file_without_settings(tmp_path, text):
 def test_example_config_loads():
     cfg = ProjectConfig.load(EXAMPLE)  # the documented starting point (README)
     assert cfg.base_downsample == 4
+
+
+def test_qc_thresholds_default_and_can_be_switched_off(tmp_path):
+    cfg = _load(tmp_path, REQUIRED)
+    assert (cfg.qc_min_ncc, cfg.qc_min_dice) == (None, 0.90)  # ncc calibrated in M4-05
+    cfg = _load(tmp_path, {**REQUIRED, "qc_min_ncc": 0.35, "qc_min_dice": None})
+    assert (cfg.qc_min_ncc, cfg.qc_min_dice) == (0.35, None)

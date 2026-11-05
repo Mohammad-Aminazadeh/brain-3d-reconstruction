@@ -7,8 +7,16 @@ import pytest
 
 from brainrec.catalog import ProjectConfig
 from brainrec.registration import PairResult, RegImage, Transform2D
+from brainrec.registration.geometry import depth_weights, masked_ncc
 from brainrec.registration.pairwise import register_pair
-from tests.synthetic.tissue import UM_PER_PX, apply_similarity, as_reg_image, make_tissue, perturb
+from tests.synthetic.tissue import (
+    UM_PER_PX,
+    apply_similarity,
+    as_reg_image,
+    deform_margin,
+    make_tissue,
+    perturb,
+)
 
 CFG = ProjectConfig(data_dir=".", work_dir=".", z_spacing_um=5.0)
 
@@ -108,15 +116,96 @@ def test_texture_free_pair_falls_back_to_outlines():
 
 
 def test_unrelated_pair_is_reported_failed():
+    r = register_pair(*_unrelated(), CFG)
+    assert r.status == "failed" and r.mask_iou < CFG.boundary_min_iou
+
+
+def _unrelated():
     a, b = make_tissue(seed=0), make_tissue(seed=9)
     squashed = cv2.resize(b.rgb, (1000, 480))  # a clearly different shape
     sq_mask = cv2.resize(b.mask, (1000, 480), interpolation=cv2.INTER_NEAREST)
-    rgb = np.vstack(
-        [np.full((160, 1000, 3), 236, np.uint8), squashed, np.full((160, 1000, 3), 236, np.uint8)]
-    )
+    pad = np.full((160, 1000, 3), 236, np.uint8)
+    rgb = np.vstack([pad, squashed, pad])
     mask = np.vstack([np.zeros((160, 1000), np.uint8), sq_mask, np.zeros((160, 1000), np.uint8)])
-    r = register_pair(as_reg_image(a.rgb, a.mask, 1), as_reg_image(rgb, mask, 2), CFG)
+    return as_reg_image(a.rgb, a.mask, 1), as_reg_image(rgb, mask, 2)
+
+
+def _ncc(fixed, moving, t):
+    m = t.to_pixels(moving.downsample, fixed.downsample, fixed.mpp_um)
+    return masked_ncc(
+        fixed.image, fixed.mask, moving.image, moving.mask, m, edge_weight=CFG.reg_edge_weight
+    )
+
+
+def _centre_error_px(r, fixed):
+    """Mean distance (px) by which the result moves the tissue centre (truth there: identity)."""
+    ys, xs = np.nonzero(depth_weights(fixed.mask, CFG.reg_edge_weight) >= 0.8)
+    pts = np.stack([xs, ys], 1)[::10].astype(float)
+    m = r.transform.to_pixels(32, 32, fixed.mpp_um)
+    return float(np.linalg.norm(pts @ m[:2, :2].T + m[:2, 2] - pts, axis=1).mean())
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_centre_aligns_best_on_a_section_deformed_at_the_edge(seed):
+    """Decision 0004: the centre must match best; the edge still counts but less."""
+    a = make_tissue(seed=seed)
+    rgb, mask = deform_margin(a.rgb, a.mask, 6.0)
+    fixed, moving = as_reg_image(a.rgb, a.mask, 1), as_reg_image(perturb(rgb, mask, seed), mask, 2)
+    weighted = register_pair(fixed, moving, CFG)
+    uniform = register_pair(fixed, moving, CFG.model_copy(update={"reg_edge_weight": 1.0}))
+    assert weighted.status == uniform.status == "features"
+    # measured: 0.95 vs 1.11 to 1.18 px; the rest is the deformation itself (a similarity cannot
+    # follow it), so even edge weight 0 leaves about 0.8 px
+    assert _centre_error_px(weighted, fixed) < 0.9 * _centre_error_px(uniform, fixed)
+    assert _centre_error_px(weighted, fixed) < 1.2
+
+
+def test_retry_with_a_wider_window_rescues_a_pair(monkeypatch):
+    """A starting estimate 1.5 mm off is beyond the 1 mm pass-1 window, not beyond the retry's
+    2.5 mm (reg_retry_window_um); real outline estimates can be that far off on torn sections."""
+    import brainrec.registration.pairwise as pw
+
+    fixed, moving, truth, mm = _pair(0, 25.0, 1.04)
+    real_initial = pw.initial_from_masks
+
+    def off(fixed_mask, moving_mask):
+        m, iou = real_initial(fixed_mask, moving_mask)
+        m = m.copy()
+        m[0, 2] += 1500.0 / (64 * fixed.mpp_um[0])  # coarse level (64x) pixels
+        return m, iou
+
+    monkeypatch.setattr(pw, "initial_from_masks", off)
+    no_retry = register_pair(fixed, moving, CFG.model_copy(update={"reg_retry_window_um": 1000.0}))
+    assert no_retry.status == "boundary"  # measured: 44 inliers, features insufficient
+    r = register_pair(fixed, moving, CFG)
+    assert r.status == "features" and _errors(r, truth, mm)[2].max() < 1.0
+
+
+def test_failed_pair_gets_the_best_candidate(monkeypatch):
+    """M3-13: a failed pair keeps the candidate that matches the tissue centre best, never one
+    that matches worse (here: compared with the outline alignment and the outline estimate)."""
+    import brainrec.registration.pairwise as pw
+
+    fixed, moving = _unrelated()
+    seen = {}
+    real_outlines, real_initial = pw.align_outlines, pw.initial_from_masks
+
+    def outlines(*args, **kwargs):
+        seen["outline"] = real_outlines(*args, **kwargs)
+        return seen["outline"]
+
+    def initial(*args, **kwargs):
+        seen["initial"] = real_initial(*args, **kwargs)
+        return seen["initial"]
+
+    monkeypatch.setattr(pw, "align_outlines", outlines)
+    monkeypatch.setattr(pw, "initial_from_masks", initial)
+    r = register_pair(fixed, moving, CFG)
     assert r.status == "failed"
+    outline = Transform2D.from_pixels(seen["outline"][0], 32, 32, fixed.mpp_um)
+    estimate = Transform2D.from_pixels(seen["initial"][0], 64, 64, fixed.mpp_um)
+    best = _ncc(fixed, moving, r.transform)
+    assert best >= _ncc(fixed, moving, outline) and best >= _ncc(fixed, moving, estimate)
 
 
 def test_mismatched_levels_rejected():
