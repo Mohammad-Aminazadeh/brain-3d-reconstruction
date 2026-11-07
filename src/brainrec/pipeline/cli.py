@@ -1,5 +1,5 @@
-"""Interim CLI until `brainrec run` arrives in M5 (M2-08, M3-10): `preprocess`, `register` and
-`volume` for a slice range, and `serve`.
+"""Interim CLI until `brainrec run` arrives in M5 (M2-08, M3-10, M4-04): `preprocess`,
+`register`, `qc` and `volume` for a slice range, and `serve`.
 
 Mistakes in the input, the settings or the environment end with a one-line `error: ...` and exit
 status 1; anything else is a bug and keeps its traceback.
@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from brainrec.catalog import Catalog, ProjectConfig
 from brainrec.preprocess import run_preprocess
+from brainrec.qc import run_qc
 from brainrec.registration import PairResult, Transform2D
 from brainrec.registration.chain import load_chained, run_register
 from brainrec.serve import create_app, hosted_url, launch_local_viewer, neuroglancer_state
@@ -58,6 +59,7 @@ def _parser() -> argparse.ArgumentParser:
 
     stage("preprocess", "tissue masks and registration images", "redo results of other settings")
     stage("register", "align consecutive slices to the first", "redo pairs of other settings")
+    stage("qc", "scores, overlays and flags of registered pairs", "redo pairs of other settings")
     v = stage("volume", "registered, tissue-only volume", "replace a volume of other inputs")
     v.add_argument("--unregistered", action="store_true", help="stack whole scans unaligned (M2)")
     s = sub.add_parser("serve", help="serve the volume and open it in a local Neuroglancer")
@@ -123,6 +125,31 @@ def _register(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> No
         print(f"warning: pairs {', '.join(failed)} failed; best-effort alignment, check them in QC")
 
 
+def _qc(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
+    catalog = _catalog(cfg, args.slices)
+    result = run_qc(catalog, work, cfg, Manifest(work.manifest), overwrite=args.overwrite)
+    report = json.loads(work.qc_report.read_text())
+    rows = report["pairs"]
+    if rows:
+        print(f"{'pair':<10}{'status':<10}{'inliers':>8}{'rms_um':>8}{'ncc':>8}{'dice':>8}  flag")
+    for r in rows:
+        pair = f"{r['fixed']}<-{r['moving']}"
+        rms = "-" if r["rms_um"] is None else f"{r['rms_um']:.1f}"
+        line = (
+            f"{pair:<10}{r['status']:<10}{r['n_inliers']:>8}{rms:>8}"
+            f"{r['ncc']:>8.3f}{r['dice']:>8.3f}  {'FLAGGED' if r['flagged'] else ''}"
+        )
+        print(line.rstrip())
+    limits = ", ".join(
+        f"{name} {'not checked' if value is None else value}"
+        for name, value in report["thresholds"].items()
+    )
+    print(f"thresholds: {limits}")
+    _summary("qc", result, "pairs", f"; report {work.qc_report}")
+    flagged = [f"{r['fixed']}<-{r['moving']}" for r in rows if r["flagged"]]
+    print(f"flagged: {', '.join(flagged) or 'none'}")
+
+
 def _registration(work: WorkDir, ids: list[int]) -> tuple[dict[int, Transform2D], dict[int, Path]]:
     """Chained transforms and tissue masks of `ids` for the registered volume (C8)."""
     span = f"{ids[0]}-{ids[-1]}"
@@ -178,7 +205,13 @@ def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     uvicorn.run(create_app(work.root), host="127.0.0.1", port=args.port)
 
 
-COMMANDS = {"preprocess": _preprocess, "register": _register, "volume": _volume, "serve": _serve}
+COMMANDS = {
+    "preprocess": _preprocess,
+    "register": _register,
+    "qc": _qc,
+    "volume": _volume,
+    "serve": _serve,
+}
 
 
 def main(argv: list[str] | None = None) -> None:

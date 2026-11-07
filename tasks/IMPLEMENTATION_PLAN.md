@@ -1,9 +1,21 @@
 # Implementation plan (MVP, from M3 onwards)
 
-Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06) done; step 2 (contracts, M3-00) done and approved** (2026-10-20); the fixed contracts are in `docs/ARCHITECTURE.md` section 5.1. Updated on 2026-10-19 for two owner requirements: **tissue only (F12)** and **feature-based alignment (F13)**, see `docs/decisions/0003-tissue-only-feature-based-registration.md`. Sources: [docs/MVP.md](../docs/MVP.md), [tasks/BACKLOG.md](BACKLOG.md), [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md), [docs/REQUIREMENTS.md](../docs/REQUIREMENTS.md), [CLAUDE.md](../CLAUDE.md).
+Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06) done; step 2 (contracts, M3-00) done and approved** (2026-10-20); the fixed contracts are in `docs/ARCHITECTURE.md` section 5.1. Updated on 2026-10-19 for two owner requirements: **tissue only (F12)** and **feature-based alignment (F13)**, see `docs/decisions/0003-tissue-only-feature-based-registration.md`. **Changed on 2026-11-06: cells in 3D (milestone M7, decision 0005), order in section 10.** Sources: [docs/MVP.md](../docs/MVP.md), [tasks/BACKLOG.md](BACKLOG.md), [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md), [docs/REQUIREMENTS.md](../docs/REQUIREMENTS.md), [CLAUDE.md](../CLAUDE.md).
 
 ## 0. Where we are
 
+**Now (2026-11-06):**
+- **Done:**
+  - M0 (except CI), M1, M2, M3;
+  - M4-01 to M4-04 (pair score, overlay, QC report, `brainrec qc`; M4-04 done 2026-11-06).
+- **Next:** M4-05 (owner's QC review and thresholds).
+- **New goal (owner, 2026-11-05/06):** cells (later vessels and other structures) as 3D objects inside a volume that can be made transparent. This adds milestone M7 before M5 (section 10).
+- **Prerequisites:** none of the new tasks is needed before M4-04 or M4-05, and no done task has to be redone.
+- **Open inputs:** section thickness (the owner will supply it) and the supervisor's answers (`docs/REQUIREMENTS.md` section 6.2).
+  - Neither blocks M4.
+  - M7-01 can start with the baseline detector; the comparison with deep-learning detectors needs permission (Q19).
+
+**At the start of M3 (2026-10-19):**
 - **Done:** M0 (except CI), M1, M2. NDPI → unregistered OME-Zarr volume of slices 1 to 10 → Neuroglancer works end to end (26 tests, ruff and mypy clean).
 - **New requirements:**
   - **F12, tissue only:** the empty glass is ignored. Registration works inside the tissue masks, and the volume stores only tissue, limited to the tissue extent.
@@ -102,6 +114,7 @@ Tasks are implemented one at a time (CLAUDE.md), so "critical path" here mostly 
 | 15b | M3-12 Transparent background in the viewer | Owner decision; needed for the M3-11 review. | Tests |
 | 16 | M3-11 Real registration, slices 1 to 10 | **First working end-to-end registered, tissue-only feature.** | **M3 gate (section 7)** |
 | 17 | M4-01, M4-02, M4-03, M4-04, M4-05 | QC inside the tissue, on top of real transforms. | AC5 |
+| 17b | **M7 Cells in 3D** (added 2026-11-06; order in section 10) | New goal: cells as 3D objects; `run` (M5) must cover the cell stages. | AC10 to AC14 |
 | 18 | M5-03, M5-04 (any time before M5-06) | Small safety tools. | Tests |
 | 19 | M5-01, M5-02, M5-05, M5-06 | Final pipeline and end-to-end run. | AC1, AC2, AC3, AC6 |
 | 20 | M6-01 to M6-04 | Review and sign-off. | AC7, AC8, AC9, sign-off |
@@ -264,3 +277,71 @@ The content changes for F12 and F13 were applied to BACKLOG, MVP, ARCHITECTURE, 
 - BACKLOG status updated.
 - Owner review where the task says so.
 - Commit and push only with permission.
+
+---
+
+## 10. Change of direction (2026-11-06): cells in 3D
+
+Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direction"). Plan history:
+- **v1:** structures in a see-through volume (superseded);
+- **v2:** cells as blobs;
+- **v3:** v2 plus the accepted ideas, and linking across sections because all sections are scanned.
+
+### 10.1 What changes
+
+- **Goal and requirements:**
+  - F16 to F23 added;
+  - AC10 to AC14 added;
+  - risks R11 to R18 added, R8 extended.
+- **Architecture:**
+  - new components `detect` and `cells`;
+  - draft contracts C13 to C18;
+  - extensions of C6 and C9;
+  - `neuroglancer_state()` gets optional cell and density layers.
+- **Unchanged:** volume, transforms, masks and registration.
+- **Done tasks:** all stay valid.
+- **To-do tasks:**
+  - **unchanged:** M0-06, M1-02, M4-04, M4-05, M5-04, M6-01, M6-04;
+  - **changed:** M5-01, M5-02, M5-03, M5-05, M5-06, M6-02, M6-03 (they now include the cell stages).
+- **New tasks:** M7-00 to M7-17; placeholders for M8 (vessels, structures, non-rigid refinement) and M9 (suspicious cells) after the MVP.
+
+### 10.2 Order
+
+| Step | Task | Gate |
+|---|---|---|
+| 1 | **M4-04** `brainrec qc` command (done 2026-11-06) | Tests |
+| 2 | **M4-05** Real QC review, slices 1 to 10 (closes M4) | Owner |
+| 3 | **M7-01** Real-data spike: detector, nucleolus, recurrence after cell-scale alignment, viewer load | Owner decisions |
+| 4 | **M7-02** Labelled cells and evaluation (the owner then labels in parallel) | Labels delivered |
+| 5 | **M7-00** Cell contracts C13 to C18 | Owner approval |
+| 6 | M7-03 synthetic nuclei and 3D cells; M7-04 layout and cell files | Tests |
+| 7 | M7-05 nucleus detection | Tests |
+| 8 | M7-06 `detect` stage | Tests |
+| 9 | M7-07 placement, layers, `cells` stage | **AC12** |
+| 10 | M7-08 viewer | Tests, owner |
+| 11 | **M7-09** real run, one type: **first 3D cells** | Owner review |
+| 12 | M7-16 detection QC | Tests |
+| 13 | M7-12 local alignment at cell scale | Tests, recurrence report |
+| 14 | M7-13 linking | **AC13** |
+| 15 | M7-10 detection accuracy; M7-11 cell types (need the labels) | **AC10** |
+| 16 | M7-14 cell table and QuPath export; M7-15 density maps | **AC14** |
+| 17 | **M7-17** real run, all types, linked (closes M7) | **AC10 to AC14**, owner |
+| 18 | M5 (adapted), then M6 | AC1 to AC9 |
+| later | M8, M9 (planned in detail when reached) | |
+
+### 10.3 Critical path and parallel work
+
+- **Critical path:** M4-04 → M4-05 → M7-01 → M7-00 → M7-03 → M7-05 → M7-06 → M7-07 → M7-09 → M7-12 → M7-13 → M7-17 → M5-01 → M5-02 → M5-06 → M6.
+- **Parallel branch:** labelling, M7-02 → owner labels → M7-10 → M7-11. It joins at M7-17.
+- **Off the path:** M7-04, M7-08, M7-14, M7-15 and M7-16. They fill waiting time during owner reviews and labelling.
+- **Answers that gate tasks:**
+  - Q19 (dependencies) for the detector comparison in M7-01 and for M7-11;
+  - Q9, Q10 and Q26 for M7-00;
+  - Q16 and Q17 for M7-02.
+- **Section thickness (Q1) gates nothing.** Detection, alignment and linking do not use it; z proportions, 3D sizes and densities per mm³ are recomputed once it is set.
+
+### 10.4 Risks to watch
+
+- **R15 and R16 (are sections adjacent; can nuclei be aligned to 1 to 2 µm):** measured first, in M7-01. If linking finds few partners, M7-12 and M7-13 still run but matter less; the decision is the owner's after the spike.
+- **R11 (accuracy):** measured in M7-10 and M7-11 against held-out crops.
+- **R13 (viewer with millions of blobs):** tested in M7-01 before the layer writer is built.

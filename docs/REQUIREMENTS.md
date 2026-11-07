@@ -21,6 +21,14 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 | F13 | **Feature-based alignment.** Alignment detects edges and features (tissue boundaries and internal structures) in each image, finds the corresponding features in consecutive images and aligns the images by them | Confirmed (owner, 2026-10-19) |
 | F14 | **Centre first.** The tissue centre must align as precisely as possible; errors may grow towards the boundary, where they matter less, but are minimised everywhere (see `docs/decisions/0004-centre-first-best-effort-registration.md`) | Confirmed (owner, 2026-11-04) |
 | F15 | **No stop on a bad pair.** A pair that cannot be aligned reliably does not stop the run: it gets the best possible alignment and is flagged for review | Confirmed (owner, 2026-11-04) |
+| F16 | **Cell detection.** Every nucleus in the tissue is detected in its section, measured (centre, radius, outline, shape, staining, nucleolus visible or not) and classified into configurable types with a probability; doubtful cells are "unclassified". Accuracy is measured against labelled cells and must be good enough to find suspicious cells later | Confirmed (owner, 2026-11-05); types and thresholds Proposed |
+| F17 | **Cells in 3D.** Each cell is shown as a 3D blob centred on its nucleus at its registered position, sized from its measured radius, with colour and shape per type. Types can be shown and hidden; the tissue layer can be faded down to fully transparent, so that only the structures remain visible | Confirmed (owner, 2026-11-05) |
+| F18 | **Traceable cells.** Each cell keeps its measurements, its outline and its position in the source slide, so it can be opened at full resolution (0.22 µm/px) without detecting again | Confirmed (owner, 2026-11-06) |
+| F19 | **One cell, one blob.** A cell cut by several consecutive sections is linked across them into one 3D cell; its size comes from its largest profile | Confirmed (owner, 2026-11-06: all sections scanned, none left out; to be confirmed by the lab) |
+| F20 | **Cell table.** All cells with 3D position, type, size and measurements are exported as a table (CSV) and per slide for QuPath (GeoJSON), for review by a pathologist | Confirmed (owner, 2026-11-06) |
+| F21 | **Density maps.** A 3D density map per cell type (coarse grid, about 50 µm) shows cell-rich and cell-poor regions, layers and the lesion; densities are corrected for section thickness once it is known | Confirmed (owner, 2026-11-06) |
+| F22 | **Vessels and other structures in 3D** (milestone M8). Vessels are also used as landmarks for a local, non-rigid refinement of the alignment | Confirmed (owner, 2026-11-05 and 2026-11-06); which structures: open |
+| F23 | **Suspicious cells** (milestone M9): cells that meet criteria given by the supervisor are flagged and listed for review | Confirmed (owner, 2026-11-05); criteria open |
 
 ## 2. Non-functional requirements
 
@@ -44,7 +52,8 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 - Free space: about 423 GB on My Passport (measured 2026-10-19), about 26 GB on the internal disk.
 - NDPI is a proprietary TIFF variant. First slice (reported by the project owner): 139776 x 102144 px, 220 nm/pixel (115454 DPI), about 30.75 x 22.47 mm, about 14.3 Gpx (about 43 GB raw RGB). Other slices differ: see section 7 (measured in M1).
 - In-plane voxel size is therefore 0.22 um; Z spacing is unknown (micrometre order).
-- Section thickness and spacing are on the order of micrometres; the exact value is unknown.
+- Section thickness and spacing are on the order of micrometres; the exact value is unknown. The owner will supply the thickness later (2026-11-06); until then it stays an open configuration value, and results that depend on it (z proportions, 3D cell size, densities per mm³) are marked as provisional.
+- **All sections were scanned, none left out** (owner, 2026-11-06, as far as known; to be confirmed by the lab, question Q2). The scanned sections are therefore consecutive, and the spacing equals the thickness.
 - One section per slide, the same stain on all slides, no reference data (no blockface photos, no MRI).
 
 ## 4. Confirmed decisions
@@ -65,6 +74,22 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 14. **Detached tissue fragments count as tissue** and are kept (owner, 2026-10-20). Masks keep every component above a small absolute size (debris specks are below 0.2 mm²) and include pale tissue connected to clearly stained tissue.
 15. **Damaged margins** (folds, tears, compression) may stay hundreds of µm off in the MVP; non-rigid correction comes after the MVP (owner, 2026-10-20).
 16. **Overlapping ripped tissue** (folds and flaps where layers lie on top of each other, recognisable by their darker colour) may be ignored: it need not be included in the mask (owner, 2026-10-20). Not removed explicitly in the MVP.
+17. **Cells as 3D blobs** (owner, 2026-11-05): a detected nucleus becomes a blob with the same centre and a radius from its 2D size; types differ in colour and shape. Cells are separate viewer layers; the image volume is unchanged. See `docs/decisions/0005-cells-in-3d.md`.
+18. **Cells first, then vessels and other structures, then suspicious cells** (owner, 2026-11-05): milestones M7, M8, M9.
+19. **Ideas accepted** (owner, 2026-11-06):
+    - linking a cell's profiles across consecutive sections;
+    - a nucleolus flag per cell, so that size can be judged on profiles cut close to the middle;
+    - the cell table with CSV and QuPath export;
+    - 3D density maps per type;
+    - vessels in 3D and as landmarks for a local, non-rigid refinement;
+    - the density correction for section thickness (Abercrombie);
+    - **not done:** invented images or cells between sections; a separate mesh per cell.
+20. **Section thickness stays open** (owner, 2026-11-06). Implementation continues without it; it is added to the configuration when the lab supplies it.
+21. **Terms.**
+    - *Background* means only the glass outside the tissue (shown transparent, C11).
+    - The image volume is the *tissue layer*. Its opacity can be lowered to zero, which makes "the rest of the tissue" transparent. No separate name is needed.
+    - *Structures* are detected objects: cells now, vessels and others in M8.
+    - A *profile* is the cut surface of one cell in one section; a *cell* is one or more linked profiles.
 
 ## 5. Proposed assumptions awaiting approval
 
@@ -77,14 +102,97 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 7. Outside-tissue voxels are stored as pure white (255, 255, 255; the volume's fill value), so all-background chunks are not stored at all. Tissue voxels that are exactly pure white are stored as 254, so pure white means background unambiguously and the viewer can show it transparent (decision 10). (Approved)
 8. The volume uses the registration mask (32x, about 7 µm/px) warped with the slice's transform and enlarged by a safety margin of about 50 µm, so tissue is never cut off; a thin rim of glass may remain along the edge. A finer tissue edge is a later improvement. (Approved, see decision 9)
 9. Feature detector: SIFT from OpenCV (rotation- and scale-invariant; already a dependency). ORB is compared in the spike; AKAZE is not available in the installed OpenCV 5.0 build. (Proposed)
+10. **Cell detection resolution:** cells are detected at the 2x level (0.44 µm/px); the spike (M7-01) checks 1x and 4x. (Proposed)
+11. **What a cell is in this stain:** the nucleus, which is the clearly visible circle; neuron bodies are faint. (Proposed, question Q10)
+12. **Starting cell types** (Proposed, question Q9):
+    - neuron, glia, vessel-wall cell and unclassified;
+    - suspicious types later (M9);
+    - all in a configurable type table.
+13. **Blob shape:** a sphere with the cell's radius. Types differ by colour and optionally by a fixed proportion, as axis-aligned ellipsoids. Shapes turned like the 2D outline would need meshes and are not planned. (Proposed, question Q26)
+14. **Accuracy gates** on held-out labelled crops: detection F1 ≥ 0.90 and median radius error ≤ 15%; targets per type are set after the spike. (Proposed, question Q18)
+15. **Detector choice:** a baseline without new dependencies (hematoxylin colour separation, threshold, split of touching nuclei) is compared with pretrained deep-learning detectors (Cellpose, StarDist or InstanSeg). Installing them needs permission. (Proposed, question Q19)
+16. **Local alignment for linking** is computed from the detected nuclei (feature-based, on top of the registration), on a grid of windows; target accuracy 1 to 2 µm. Intensity correlation may only initialise or refine it (F13). (Proposed)
 
 ## 6. Open questions
 
-1. Exact section thickness and spacing (µm), to be obtained from the lab.
+### 6.1 Technical
+
+1. Exact section thickness and spacing (µm), to be obtained from the lab (questions Q1 and Q2 below).
 2. NDPI pyramid levels (dimensions and pixel size are known for slice 1; to be verified for the rest).
 3. Resolution floor: 4x (0.88 µm/px) accepted for now. 2x does not fit losslessly; it would need a lossy viewer format.
 4. Can the native-resolution on-demand path read the external drive fast enough? To be measured.
 5. Which viewer to use if Neuroglancer's UX proves unsuitable?
+
+### 6.2 Questions for the supervisor (meeting, November 2026)
+
+The owner takes these to the supervisor. Each question says what it decides and which default applies until it is answered. **Needed for** names the task that cannot be finished without the answer; all other questions only refine results.
+
+**A. Sectioning**
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q1 | How thick is each section (µm)? | Z proportions of the volume, 3D cell size, densities per mm³ | `z_spacing_um` 5 µm (placeholder); densities per mm² of section | correct proportions (M7-15, M7-17) |
+| Q2 | Were all consecutive sections of the block mounted and scanned, or only every n-th one? If not all: how many µm lie between two scanned sections? *Our observation:* neighbouring images share vessels; after a rough local alignment only 10 to 17% of nuclei recur, and images two apart share none. With consecutive sections of 3 to 5 µm we would expect more, unless our alignment is still too coarse. | Whether a cell's profiles must be linked across sections (M7-12, M7-13) | Owner's information: all scanned, none left out | M7-12 |
+| Q3 | Do the file numbers 1 to 140 follow the cutting order? Was any section lost, damaged, re-cut or put out of order? | Slice order; known gaps | Numbers are the cutting order; nothing missing | — |
+| Q4 | In which anatomical plane and direction was the block cut, and where is the pial surface in the images? | Orientation labels; reading of cortical layers | No anatomical labels | — |
+| Q5 | Paraffin (FFPE) or frozen sections? Is a shrinkage factor known? | Whether sizes in µm compare with literature values | No shrinkage correction | — |
+
+**B. Stain**
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q6 | Which stain exactly? It looks like hematoxylin without eosin: nuclei dark purple, tissue pale purple, red blood cells beige. Could it be a Nissl stain (cresyl violet)? Same protocol for all 140 slides? | Colour separation for detection; whether neuron bodies, not only nuclei, can be measured | Hematoxylin only | M7-01 conclusions |
+| Q7 | Are other stains of this block or of neighbouring blocks available (for example NeuN, GFAP, Olig2, Iba1, vimentin, SMI32, CD34)? Could a few sections be stained and scanned? | Whether cell types can be verified beyond morphology | Types from morphology only | — |
+
+**C. Cells**
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q8 | Which FCD type does this case have (pathology report)? | Which abnormal cells to expect (dysmorphic neurons, balloon cells) | Unknown | M9 |
+| Q9 | Which cell types should the first version distinguish? Proposal: neuron, glia, vessel-wall cell, unclassified. Is it worth separating astrocytes, oligodendrocytes and microglia in this stain? | Type table; labelling guide | The proposal | M7-00, M7-02 |
+| Q10 | Should a cell be represented by its nucleus (clearly visible) or by its whole cell body (faint in this stain)? | What is measured; blob size | Nucleus | M7-00 |
+| Q11 | Typical nucleus (and cell body) diameters per type in this tissue, normal and abnormal? | Size limits for detection; plausibility checks | 3 to 15 µm nuclei | M7-05 |
+| Q12 | What makes a cell suspicious in this case? For example: nucleus or body larger than a given size, prominent nucleolus, abnormal shape or orientation, position (neurons in white matter), clusters. | Which measurements are stored now, so that M9 needs no second detection | A broad set of measurements | M7-05 |
+| Q13 | Is the lesion location known (report, MRI, a rough outline on one slide)? | Validation of density maps and of the suspicious-cell search | Unknown | M7-15, M9 |
+
+**D. Vessels and other structures (M8)**
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q14 | Which vessels matter (capillaries, arterioles, veins) and from which diameter on? Should arteries and veins be told apart? | Vessel detection | All vessels with a visible lumen | M8 |
+| Q15 | Which other structures should be visible in 3D: cortical layers, grey/white-matter boundary, pial surface, lesion outline, calcifications, heterotopic neurons? | Scope of M8 | None | M8 |
+
+**E. Labelled examples and accuracy**
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q16 | Who can mark cells on example crops for training and testing (supervisor, a pathologist, the owner), and how much time is available? Plan: 15 to 20 crops of 250 × 250 µm, about 1500 cells, a few hours. | Ground truth for the accuracy gates | — | M7-02, M7-10, M7-11 |
+| Q17 | Is QuPath used at the institute? Do annotations or QuPath projects for these slides exist? | Labelling tool; export format | QuPath | M7-02 |
+| Q18 | Is a detection score (F1) of at least 0.90 and a median size error of at most 15% good enough? For suspicious cells: rather find all candidates (more false alarms to review) or few false alarms? | Gates of AC10; thresholds in M9 | The proposal; all candidates | M7-10 |
+
+**F. Software, computers, data**
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q19 | May deep-learning nucleus detectors be installed (PyTorch with Cellpose, StarDist or InstanSeg; open source, about 1 to 2 GB) and scikit-learn? Any licence restrictions? | Detector and classifier | Baseline detector only | M7-01 comparison, M7-11 |
+| Q20 | Is a workstation or server with a GPU available? | Run time for 140 slices (laptop estimate: 1 to 4 days for detection) | The laptop | M6-03 |
+| Q21 | Data protection: may derived data (cell tables, result figures showing tissue) be kept in the private GitHub repository or cloud services? Compressed result figures are already there. | What may go to GitHub | Figures only, as now | — |
+| Q22 | The 140-slice volume needs about 280 GB of the about 423 GB free on the work drive. Is a second drive available for cells, density maps and later versions? | Scale-up | One drive | M6-03 |
+
+**G. Scope**
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q23 | Priority: cells in 3D on slices 1 to 10 first (current plan), or the whole 140-slice volume first? | Order of M7 and the scale-up | Cells first | — |
+| Q24 | Who will use the result (pathologists, presentations, a publication)? Must the viewer run on other computers? | Viewer hosting; export formats | Local viewer | M6-03 |
+| Q25 | Which deadlines apply (presentations, reports)? | Order and scope | — | — |
+
+**H. For the owner** (no supervisor needed)
+
+| ID | Question | Decides | Until answered | Needed for |
+|---|---|---|---|---|
+| Q26 | Blob shapes: a sphere per cell, colour per type, optionally a fixed proportion per type (flatter or taller). Truly different shapes need meshes (more work, slower). Is that what "different shapes" should mean? | Layer format (C17) | Spheres, colour per type | M7-00 |
+| Q27 | Colours per type, or a convention used at the institute? | Type table | A colour-blind-safe palette | M7-00 |
 
 ## 7. Measured facts (M1, `scripts/characterize.py`, read-only)
 
@@ -130,5 +238,33 @@ Outputs (moved on 2026-10-20 for presentation) in `/Volumes/My Passport/3D Brain
   - **Interpretation:** the correspondence between sections lies in larger structures, not in fine detail.
   - **Scale depends on resolution for the damaged pair 5→6** (0.87 at 16x, 0.91 at 32x, 0.96 at 64x). That is a sign of uneven deformation.
 - **Accuracy to expect:**
-  - **Undamaged areas:** the inlier residual is about 17 µm, roughly 2.5 registration pixels or 20 base pixels at 0.88 µm/px. That is structure-level alignment: vessels and layers line up; individual cells do not correspond between sections anyway.
+  - **Undamaged areas:** the inlier residual is about 17 µm, roughly 2.5 registration pixels or 20 base pixels at 0.88 µm/px. That is structure-level alignment: vessels and layers line up, individual cells do not. (Whether single nuclei recur in the next section was measured later, see below.)
   - **Damaged areas:** at folds, tears and compressed margins (slices 4 and 5), edges stay off by hundreds of µm after any global transform. The best mask overlap after guided matching is 0.84 for pairs 4→5 and 5→6, against 0.93 to 0.98 for undamaged pairs. Fixing this needs non-rigid registration (post-MVP).
+
+### Same cells in neighbouring sections? (2026-11-05, read only, slices 1 to 10)
+
+Question: does a cell continue from one image into the next? Script in the session scratchpad (not in the repository), outputs only there; sources read at the 2x level (0.44 µm/px).
+
+- **Method:**
+  - 300 µm windows of section *a*, more than 1.5 mm inside the tissue, three windows per pair;
+  - section *b* warped into *a*'s frame with the registration transforms, then a local search of ±80 µm by correlation of the hematoxylin channel;
+  - nuclei found by a simple threshold; a nucleus counts as shared if *b* has one within 2 µm;
+  - control: the same comparison 1.5 mm away (chance level).
+- **Results:**
+
+  | Pair | Correlation (chance) | Shared nuclei (chance) |
+  |---|---|---|
+  | 1→2 | 0.07 to 0.11 (0.04 to 0.05) | 2 to 7% (2 to 6%); the local search did not lock on |
+  | 6→7 | 0.14 to 0.33 (about 0.05) | 10 to 17% (2 to 3%) |
+  | 8→9 | 0.09 to 0.24 (about 0.05) | 8 to 15% (4 to 5%) |
+  | 1→3, 6→8 (two apart) | 0.04 to 0.08 | chance level |
+
+- **Visual check (6→7):** vessels and larger structures lie in the same places; most single nuclei are not recognisably the same.
+- **Local offsets after the registration:** 20 to 25 µm where the search clearly worked, once almost 80 µm. These are 2 to 4 cell diameters, so following single cells across sections needs a local alignment at cell scale (M7-12).
+- **Interpretation:** neighbouring images are close in depth. The low share of recurring nuclei fits either gaps between scanned sections or adjacent thin sections with local alignment errors of a few µm (one rigid offset per 300 µm window cannot follow the deformation inside it). The owner reports that all sections were scanned (question Q2). The spike M7-01 repeats the measurement with a finer local alignment.
+- **Stain and size (sample slide, small crops):**
+  - looks like hematoxylin only: nuclei dark purple, tissue pale purple, red blood cells beige, no eosin (question Q6);
+  - nuclei are sharp at 0.22 to 0.44 µm/px with no blurred nuclei below them, so the sections are thin;
+  - median nucleus diameter about 6 µm (90th percentile 7 to 8.5 µm);
+  - roughly 500 to 1000 nuclei/mm² from a simple threshold (probably an undercount), so about 200,000 to 400,000 nucleus profiles per section.
+- **Viewer:** the bundled Neuroglancer (2.41.2) supports ellipsoid annotations with per-cell properties, controls in the layer panel and sharded annotation files. Its Python annotation writer is too limited (one file per annotation, no multi-level spatial index), so the cell layers need an own writer (numpy only).

@@ -17,6 +17,18 @@ Reconstruct a 3D volume from 140 ultra-high-resolution NDPI brain slices (about 
 - Do not install dependencies, or create files outside the task scope, without permission.
 - Report blockers, failed tests and uncertainty immediately and plainly.
 
+## Changes of direction during implementation
+
+When the project owner changes the goal or the method while the project is under way (owner rule, 2026-11-05):
+
+1. If the change is ambiguous, ask the owner to explain more before planning.
+2. Propose a complete plan and wait for approval. The plan covers:
+   - what changes in the goal, requirements, architecture and contracts;
+   - which done and to-do tasks stay valid, and which change;
+   - which new tasks are needed, and where they go in the order.
+3. After approval, update every affected planning file in one step: README, `docs/REQUIREMENTS.md`, `docs/ARCHITECTURE.md`, `docs/MVP.md`, `tasks/BACKLOG.md` (tasks and subtasks), `tasks/IMPLEMENTATION_PLAN.md`, and a decision note in `docs/decisions/`. Leave unaffected tasks, done or to do, as they are.
+4. The project is built incrementally. First implement, one at a time, the new tasks that must come before the current task. Then continue from where the work stood.
+
 ## Data safety
 
 - Never modify, move or delete source NDPI files (the sample in `Data Sample/` and everything on "My Passport").
@@ -36,6 +48,9 @@ Reconstruct a 3D volume from 140 ultra-high-resolution NDPI brain slices (about 
 - Voxel size (including Z spacing) comes from configuration, never hard-coded.
 - Only tissue matters (F12): every stage after preprocessing uses the tissue mask. Features, metrics and the volume ignore the background; the volume is limited to the tissue extent.
 - Registration is feature-based (F13): boundary-based initial alignment, keypoint matching inside the masks, robust (RANSAC) fit. Intensity-based registration may only refine, never replace, this method.
+- Cells and other structures are objects, not pixels (decision 0005): they are detected per section in the slice frame inside the tissue mask, stored as tables separate from pixels and transforms, and placed in 3D only through the registration transforms. The cell type table comes from configuration.
+- Nothing is invented between sections: no interpolated images or cells.
+- Section thickness, like Z spacing, comes from configuration. While it is unknown, results that depend on it are marked as provisional.
 
 ## Coding conventions
 

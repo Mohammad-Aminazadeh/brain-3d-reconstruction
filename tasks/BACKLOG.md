@@ -1,6 +1,6 @@
 # MVP backlog (Work Breakdown Structure)
 
-Scope and acceptance criteria (AC1 to AC9): [docs/MVP.md](../docs/MVP.md). Architecture and interfaces: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
+Scope and acceptance criteria (AC1 to AC14): [docs/MVP.md](../docs/MVP.md). Cells in 3D (M7, added 2026-11-06): [docs/decisions/0005-cells-in-3d.md](../docs/decisions/0005-cells-in-3d.md). Architecture and interfaces: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
 Hierarchy: **Milestone → Component → Task → Subtask.** One task = one focused coding session with a verifiable result. Tasks are done one at a time (CLAUDE.md); "independent" below means the order among them is free.
 
@@ -55,18 +55,38 @@ Conventions that apply to every task (not repeated below):
 | M4-01 | Pair score | qc | Medium | Done | M3-05, M3-02 |
 | M4-02 | Overlay image | qc | Low | Done | M3-05 |
 | M4-03 | QC report and flags | qc | Low | Done | M4-01, M4-02, M3-01 |
-| M4-04 | `brainrec qc` command | pipeline | Low | To do | M4-03 |
+| M4-04 | `brainrec qc` command | pipeline | Low | Done | M4-03 |
 | M4-05 | Real QC review, slices 1 to 10 | integration | Medium | To do | M4-04, M3-11 |
-| M5-01 | Stage runner with resume | pipeline | Medium | To do | M3-10, M4-04 |
+| M5-01 | Stage runner with resume (incl. `detect`, `cells`) | pipeline | Medium | To do | M3-10, M4-04, M7-06, M7-13 |
 | M5-02 | `brainrec run` and `brainrec status` | pipeline | Medium | To do | M5-01 |
 | M5-03 | Disk-space preflight | pipeline | Low | To do | M2-04 |
 | M5-04 | Source fingerprint (before/after) | scripts | Low | To do | M2-02 |
 | M5-05 | End-to-end synthetic integration test | tests | Medium | To do | M5-02 |
-| M5-06 | End-to-end real run and resume check | integration | Medium | To do | M5-02, M5-03, M5-04 |
+| M5-06 | End-to-end real run and resume check | integration | Medium | To do | M5-02, M5-03, M5-04, M7-17 |
 | M6-01 | Documentation consistency pass | docs | Low | To do | M5-06 |
 | M6-02 | Acceptance report | docs | Low | To do | M5-06 |
 | M6-03 | Scale-up plan (planning only) | docs | Low | To do | M5-06 |
 | M6-04 | Owner sign-off | review | Low | To do | M6-01, M6-02, M6-03 |
+| M7-01 | **Real-data spike: detection, recurrence of nuclei, viewer load (first M7 task)** | integration | High | To do | M3-11 |
+| M7-02 | Labelled cells and evaluation | detect | Medium | To do | M7-01 |
+| M7-00 | Cell contracts (C13 to C18) | docs | Low | To do | M7-01 |
+| M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | To do | M7-00, M3-02 |
+| M7-04 | Work-dir layout and cell file I/O | store | Low | To do | M7-00, M3-01 |
+| M7-05 | Nucleus detection, tiled | detect | High | To do | M7-03, M7-04 |
+| M7-06 | `detect` stage and `brainrec detect` | detect | Medium | To do | M7-05, M4-04 |
+| M7-07 | 3D placement, cell layers and `cells` stage | cells | High | To do | M7-06 |
+| M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | To do | M7-07 |
+| M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | To do | M7-08 |
+| M7-10 | Detection accuracy | detect | Medium | To do | M7-02 (+ labels), M7-09 |
+| M7-11 | Cell types | detect | High | To do | M7-10 |
+| M7-12 | Local alignment at cell scale | cells | High | To do | M7-07, M7-03 |
+| M7-13 | Linking profiles into 3D cells | cells | High | To do | M7-12 |
+| M7-14 | Cell table and QuPath export | cells | Low | To do | M7-13 |
+| M7-15 | Density maps per type | cells | Medium | To do | M7-13, M7-08 |
+| M7-16 | Detection QC | qc | Medium | To do | M7-06 |
+| M7-17 | Real run, slices 1 to 10, all types, linked | integration | Medium | To do | M7-11, M7-13, M7-14, M7-15, M7-16, M4-05 |
+| M8-xx | Vessels, other structures, landmark-based non-rigid refinement (after the MVP) | several | n/a | To do (planned when reached) | M6-04 |
+| M9-xx | Suspicious cells (after the MVP) | several | n/a | To do (planned when reached) | M7-17, Q8, Q12 |
 
 ---
 
@@ -77,9 +97,10 @@ Conventions that apply to every task (not repeated below):
 - After M3-00: M3-01 (layout), M3-02 (synthetic generator) and M3-05 (transform model) do not depend on each other; M3-04 (mask) → M3-03 (registration image) can follow independently of M3-07.
 - After M3-05: M3-09 (volume with transforms), M4-01 and M4-02 (QC score and overlay) can be built and tested on synthetic data while M3-07 is in progress.
 - M3-12 (transparent background) needs only M3-09.
+- M7 (after M7-00): M7-04 (layout) is independent of M7-03 (synthetic data); M7-08 (viewer), M7-16 (detection QC) and M7-14/M7-15 (exports, density) are off the critical path. The labelling branch M7-02 → owner labels → M7-10 → M7-11 runs beside M7-03 to M7-13.
 
 **Sequential (critical path):**
-M3-06 (spike) → M3-00 (contracts) → M3-05 → M3-07 → M3-08 → M3-10 → M3-11 → M4-05 → M5-01 → M5-02 → M5-06 → M6-01/02/03 → M6-04.
+M3-06 (spike) → M3-00 (contracts) → M3-05 → M3-07 → M3-08 → M3-10 → M3-11 → M4-04 → M4-05 → **M7-01 → M7-00 → M7-03 → M7-05 → M7-06 → M7-07 → M7-09 → M7-12 → M7-13 → M7-17** → M5-01 → M5-02 → M5-06 → M6-01/02/03 → M6-04 (M7 inserted on 2026-11-06, decision 0005).
 M2-10 (owner's visual check, done) had to pass before M3-11, because M3-11 relies on the viewer to judge registration. M2-11 must precede M3-10, because it creates `tests/unit/test_cli.py`, which M3-10 extends. Details and session estimates: `tasks/IMPLEMENTATION_PLAN.md`.
 
 ```mermaid
@@ -121,6 +142,26 @@ flowchart TD
     M5-04 --> M5-06
     M4-05 --> M5-06
     M5-06 --> M6-01 & M6-02 & M6-03 --> M6-04
+    M3-11 --> M7-01
+    M7-01 --> M7-00 & M7-02
+    M7-00 --> M7-03 & M7-04
+    M3-02 --> M7-03
+    M7-03 --> M7-05
+    M7-04 --> M7-05 --> M7-06 --> M7-07 --> M7-08 --> M7-09
+    M4-04 --> M7-06
+    M7-07 --> M7-12
+    M7-03 --> M7-12 --> M7-13
+    M7-02 --> M7-10
+    M7-09 --> M7-10 --> M7-11
+    M7-13 --> M7-14
+    M7-13 --> M7-15
+    M7-08 --> M7-15
+    M7-06 --> M7-16
+    M7-11 & M7-13 & M7-14 & M7-15 & M7-16 --> M7-17
+    M4-05 --> M7-17
+    M7-06 --> M5-01
+    M7-13 --> M5-01
+    M7-17 --> M5-06
 ```
 
 ---
@@ -606,11 +647,28 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: pipeline
 
-#### M4-04 `brainrec qc` command · Low · To do
+#### M4-04 `brainrec qc` command · Low · Done
 - **Objective:** Produce scores, overlays and report for a slice range; print a summary table.
-- **Depends on:** M4-03. **Files:** `src/brainrec/pipeline/cli.py`.
+- **Depends on:** M4-03. **Files:** `src/brainrec/pipeline/cli.py`, `src/brainrec/qc/stage.py` (added: the stage function in the C7 shape, so M5-01 can wrap it like the other stages, and resume per pair as every stage must).
 - **Acceptance:** runs on a synthetic temp work dir; exit code 0; summary lists flagged pairs.
-- **Tests:** `tests/unit/test_cli.py` (extended).
+- **Tests:** `tests/unit/test_cli.py` (extended), `tests/unit/test_qc_stage.py`.
+- **Result (2026-11-06):**
+  - **Code:**
+    - `run_qc(catalog, work, cfg, manifest, reader_factory, overwrite) -> StageResult` in `src/brainrec/qc/stage.py`: scores every consecutive pair (`score_pair`, centre-weighted with `reg_edge_weight`), draws its overlay and writes `qc/report.json`.
+    - **Resume per pair** (manifest key `qc`): a pair is redone only when its pair file or one of its two registration images, masks or metadata changed (SHA-256 of the files). Scores are kept in the manifest.
+    - **Thresholds** are not part of the signature: changing them re-evaluates the flags without recomputing anything. Another `reg_edge_weight` needs `--overwrite`.
+    - **Missing pairs** end with `error: pairs 1<-2, ... are not registered; run register first`.
+    - **CLI:** `brainrec qc --slices A-B [--overwrite]` prints one row per pair (status, inliers, residual, NCC, Dice, `FLAGGED`), the thresholds, the stage summary and the flagged pairs (or `none`). Exit status 0, also with flagged pairs.
+  - **Tests:**
+    - 12 stage tests: scores equal `score_pair`; overlays at the fixed frame's size; a wrong transform and a failed pair are flagged; a second run reads and writes nothing; a new pair result or registration image redoes exactly the affected pairs; a deleted overlay is redrawn; extending the range scores only the new pair; new thresholds change flags without recomputing; another edge weight needs overwrite; unregistered pairs are named; a single slice gives an empty report.
+    - 2 CLI tests: table, thresholds, summary and flags, also after stricter thresholds; qc before register.
+    - Full suite: 277 passed.
+    - **Mutation check:** 8 deliberate faults each caught: key ignored on resume, registration images not hashed, thresholds in the signature, overlay existence not checked, fixed edge weight, no overlay drawn, stale score reused, missing pairs not checked.
+  - **Real slices 1 to 10:**
+    - all 9 pairs `features`, NCC 0.346 to 0.754, Dice 0.904 to 0.981;
+    - with the current thresholds (NCC not checked, Dice 0.90) none is flagged;
+    - 9 s for the first run, 0.4 s for the second; 177 MB of overlays in `qc/`.
+    - The weakest pairs are again 4→5 (NCC 0.346) and 5→6 (0.377). Choosing the thresholds is M4-05.
 
 ### Component: integration
 
@@ -628,23 +686,23 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 ### Component: pipeline
 
 #### M5-01 Stage runner with resume · Medium · To do
-- **Objective:** Run stages in order (preprocess → register → qc → volume), each resumable, from one call.
+- **Objective:** Run stages in order (preprocess → register → qc → volume → detect → cells), each resumable, from one call. (Changed 2026-11-06: `detect` and `cells` added, decision 0005.)
 - **Outputs:** `pipeline/runner.py`: `Stage` protocol (`name`, `run(range, ctx)`, `status(range, ctx)`); `run_pipeline(range, stages, ctx)`; injected reader factory for tests.
-- **Depends on:** M3-10, M4-04. **Files:** `src/brainrec/pipeline/runner.py`, `src/brainrec/pipeline/stages.py`.
-- **Subtasks:** M5-01a stage protocol and context; M5-01b wrap the four stages; M5-01c runner with stop-on-error and status.
+- **Depends on:** M3-10, M4-04, M7-06, M7-13. **Files:** `src/brainrec/pipeline/runner.py`, `src/brainrec/pipeline/stages.py`.
+- **Subtasks:** M5-01a stage protocol and context; M5-01b wrap the six stages; M5-01c runner with stop-on-error and status.
 - **Acceptance:** a failure in one stage stops later stages and leaves earlier results valid.
 - **Tests:** `tests/unit/test_runner.py` (order, skip done, stop on error, using fakes).
 
 #### M5-02 `brainrec run` and `brainrec status` · Medium · To do
 - **Objective:** The MVP command line.
-- **Outputs:** `run --slices A-B [--stage S] [--overwrite]`, `status`, `qc`, `serve`. The interim `preprocess`, `register` and `volume` commands are removed (documented in README and ARCHITECTURE).
+- **Outputs:** `run --slices A-B [--stage S] [--overwrite]`, `status`, `qc`, `serve`. The interim `preprocess`, `register`, `volume`, `detect` and `cells` commands are removed (documented in README and ARCHITECTURE). `status` includes the cell stages (changed 2026-11-06).
 - **Depends on:** M5-01. **Files:** `src/brainrec/pipeline/cli.py`, README, `docs/ARCHITECTURE.md`.
 - **Acceptance:** `status` shows per-stage progress per slice.
 - **Tests:** `tests/unit/test_cli.py` (rewritten for the final commands).
 
 #### M5-03 Disk-space preflight · Low · To do
 - **Objective:** Refuse to start a volume build that cannot fit (CLAUDE.md data-safety rule).
-- **Outputs:** `estimate_volume_bytes(spec, dims)` (about 2 GB per slice at 4x, from M2 measurements) and a check against free space with a 10% margin.
+- **Outputs:** `estimate_volume_bytes(spec, dims)` (about 2 GB per slice at 4x, from M2 measurements) and a check against free space with a 10% margin; the estimate also counts the cell outputs (cell files, layers, QuPath exports, density maps; sizes measured in M7-09). (Changed 2026-11-06.)
 - **Depends on:** M2-04. **Files:** `src/brainrec/store/space.py`.
 - **Acceptance:** clear error message with needed and free space.
 - **Tests:** `tests/unit/test_space.py` (free space mocked).
@@ -662,17 +720,17 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 #### M5-05 End-to-end synthetic integration test · Medium · To do
 - **Objective:** The whole pipeline in one automated test.
-- **Inputs:** 4 synthetic slides moved by known rigid transforms. **Outputs:** `tests/integration/test_end_to_end.py`.
+- **Inputs:** 4 synthetic slides moved by known rigid transforms, with synthetic nuclei of known 3D cells (M7-03). **Outputs:** `tests/integration/test_end_to_end.py`.
 - **Depends on:** M5-02.
-- **Acceptance:** after `run`, markers align across z within 1 px at the base level; QC flags none; second run reads no pixels.
+- **Acceptance:** after `run`, markers align across z within 1 px at the base level; QC flags none; the blobs lie on the nuclei and each synthetic cell gives one blob; second run reads no pixels. (Changed 2026-11-06.)
 - **Tests:** the test itself.
 
 ### Component: integration
 
 #### M5-06 End-to-end real run and resume check · Medium · To do
 - **Objective:** AC1, AC2, AC3, AC6 on real data.
-- **Steps:** fingerprint; clean work dir; `run --slices 1-10`; re-run (must skip); fingerprint compare; `du` of outputs; `serve` and owner check.
-- **Depends on:** M5-02, M5-03, M5-04, M4-05.
+- **Steps:** fingerprint; clean work dir; `run --slices 1-10` (including detection and cells; run time per stage recorded); re-run (must skip); fingerprint compare; `du` of outputs; `serve` and owner check.
+- **Depends on:** M5-02, M5-03, M5-04, M4-05, M7-17. (Changed 2026-11-06.)
 - **Acceptance:** all four criteria met, evidence recorded in M6-02.
 - **Tests:** logs and owner review.
 
@@ -690,12 +748,12 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 #### M6-02 Acceptance report · Low · To do
 - **Objective:** One page of evidence per acceptance criterion.
-- **Outputs:** `docs/MVP_REPORT.md` (AC1 to AC9: command, result, date, open issues).
+- **Outputs:** `docs/MVP_REPORT.md` (AC1 to AC14: command, result, date, open issues). (Changed 2026-11-06.)
 - **Acceptance:** owner can verify each criterion from the report.
 
 #### M6-03 Scale-up plan (planning only) · Low · To do
 - **Objective:** Plan the step from the MVP to 140 slices; no implementation.
-- **Outputs:** `docs/SCALE_UP.md`: run time and storage for 140 slices (from measured numbers), and the order of the postponed features with their risks.
+- **Outputs:** `docs/SCALE_UP.md`: run time and storage for 140 slices (from measured numbers, including the detection days), and the order of the postponed features with their risks, including M8 (vessels, structures, non-rigid refinement) and M9 (suspicious cells). (Changed 2026-11-06.)
 - **Acceptance:** owner can choose the next milestone from it.
 
 ### Component: review
@@ -704,3 +762,269 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 - **Objective:** Formal MVP acceptance.
 - **Depends on:** M6-01, M6-02, M6-03.
 - **Acceptance:** owner approves or lists required changes.
+
+---
+
+## M7 Cells in 3D
+
+Added 2026-11-06 (owner, decision 0005). Requirements F16 to F21; gate AC10 to AC14. Contracts C13 to C18 are drafts in `docs/ARCHITECTURE.md` section 5.2 until M7-00.
+
+**Order:**
+1. **A: decisions and labelled cells** (M7-01, M7-02, M7-00).
+2. **B: first 3D cells, one type, unlinked** (M7-03 to M7-09).
+3. **C: one cell, one blob across sections** (M7-12, M7-13).
+4. **D: accuracy, types and outputs** (M7-10, M7-11, M7-14, M7-15, M7-16).
+5. **Final real run** (M7-17).
+
+The owner's labelling (after M7-02) runs in parallel with B and C.
+
+**Effort (rough):**
+- 40 to 50 sessions;
+- plus a few hours of labelling;
+- plus the answers to the supervisor questions (`docs/REQUIREMENTS.md` section 6.2).
+
+### Component: integration (first)
+
+#### M7-01 Real-data spike: detection, recurrence of nuclei, viewer load · High · To do
+- **Objective:** before any library code, learn from real slices:
+  - (a) which detector works on this stain, at which level (1x, 2x, 4x), and how fast;
+  - (b) whether a nucleolus is visible, and whether the radius rule (equivalent-area circle) is stable;
+  - (c) stain and focus across the block (slices 1, 5, 70, 140);
+  - (d) **whether nuclei recur in the next section once the sections are aligned at cell scale.** This repeats the 2026-11-05 check with a local alignment from the nuclei themselves and answers R15 and R16 from the data;
+  - (e) viewer load: 2 to 4 million test ellipsoids over the real volume (2D and 3D smoothness, toggles, click).
+- **Component:** scripts (throwaway, no library code).
+- **Inputs:** crops of slices 1, 2, 5, 6, 7, 70 and 140, read only.
+- **Outputs:**
+  - figures and numbers in the work dir `spike/M7-01/`;
+  - findings in `docs/REQUIREMENTS.md` section 7.
+- **Subtasks:**
+  - **M7-01a** detection comparison and nucleolus: baseline first; pretrained deep-learning detectors only after the owner's permission (Q19);
+  - **M7-01b** recurrence after cell-scale local alignment (pairs 1→2, 6→7, 8→9 and one pair near slice 70);
+  - **M7-01c** viewer load test with a prototype annotation writer.
+- **Depends on:** M3-11. **Files:** `scripts/spike_cells.py`, `docs/REQUIREMENTS.md`.
+- **Acceptance:** the owner has seen the figures, and these decisions are recorded:
+  - detector and level;
+  - radius rule;
+  - whether linking is needed, from the measured recurrence;
+  - method and reachable accuracy of the local alignment;
+  - viewer limits (cells per layer, level of detail).
+- **Out of scope:** library code, unit tests, interface changes.
+
+#### M7-02 Labelled cells and evaluation · Medium · To do
+- **Objective:** ground truth to measure accuracy (AC10).
+- **Outputs:**
+  - 15 to 20 crops of 250 × 250 µm from several slices and regions (cortex, white matter, lesion if known), with a fixed split into training and test crops by crop;
+  - a one-page labelling guide `docs/LABELLING.md` (QuPath: a point per cell with its type, a diameter on a subset);
+  - `detect/evaluate.py`:
+    - reads QuPath exports;
+    - matches detections to labels one-to-one within max(3 µm, half the radius);
+    - reports precision, recall, F1, centre and radius error, and a confusion table per type.
+- **Subtasks:** M7-02a crops and labelling guide; M7-02b QuPath import; M7-02c matching and scores.
+- **Depends on:** M7-01 (crop size, level); answers Q9, Q16, Q17.
+- **Files:** `scripts/make_label_crops.py`, `src/brainrec/detect/evaluate.py`, `docs/LABELLING.md`.
+- **Acceptance:**
+  - evaluation gives the known scores on synthetic label sets;
+  - the owner has the crops and the guide.
+- **Tests:** `tests/unit/test_evaluate.py`, covering perfect detections, shifted, missing and extra detections, and type confusion.
+
+### Component: docs
+
+#### M7-00 Cell contracts · Low · To do
+- **Objective:** fix C13 to C18 and the C6 and C9 extensions (`docs/ARCHITECTURE.md` section 5.2) with the spike's facts and the answers to Q9, Q10, Q26 and Q27.
+- **Depends on:** M7-01. **Files:** `docs/ARCHITECTURE.md`.
+- **Acceptance:** owner approval.
+
+### Component: tests
+
+#### M7-03 Synthetic nuclei and synthetic 3D cells · Medium · To do
+- **Objective:** test data with known truth for detection, placement and linking.
+- **Outputs:** `tests/synthetic/nuclei.py` with two generators:
+  - (a) RGB tiles with hematoxylin-like nuclei of known centre, radius and type. They include touching nuclei, nucleoli, pale neuron nuclei, cells on tile borders, and a mask;
+  - (b) a 3D field of spheres and ellipsoids cut into consecutive sections of known thickness. Each section gets a known similarity transform plus a smooth local deformation. The result is profile tables with the true cell id of every profile.
+- **Depends on:** M7-00, M3-02. **Files:** `tests/synthetic/nuclei.py`.
+- **Acceptance:** generated truth is self-consistent: profile radii follow the cut height, and cells on tile borders are listed once.
+- **Tests:** `tests/unit/test_synthetic_nuclei.py`.
+
+### Component: store
+
+#### M7-04 Work-dir layout and cell file I/O · Low · To do
+- **Objective:** paths and formats of C13 to C18 in one place.
+- **Outputs:**
+  - `WorkDir` paths for cell files, pair files, layers, table, QuPath exports and density maps;
+  - a `Profiles` table with atomic save and load (npz plus json);
+  - manifest keys `detect` and `cells`.
+- **Depends on:** M7-00, M3-01. **Files:** `src/brainrec/store/layout.py`, `src/brainrec/store/cells.py`.
+- **Acceptance:** round trip exact; ids validated as for the other paths.
+- **Tests:** `tests/unit/test_store_cells.py`.
+
+### Component: detect
+
+#### M7-05 Nucleus detection, tiled · High · To do
+- **Objective:** all nuclei of a slice, measured in µm (F16, C13).
+- **Subtasks:**
+  - **M7-05a** tiles over the mask with overlap;
+  - **M7-05b** detector behind one function (method from the spike);
+  - **M7-05c** centre rule at tile borders, nothing outside the mask;
+  - **M7-05d** measurements (shape, staining, texture, nucleolus) and outlines in µm.
+- **Depends on:** M7-03, M7-04. **Files:** `src/brainrec/detect/tiles.py`, `nuclei.py`, `measure.py`.
+- **Acceptance (synthetic):**
+  - centres within 0.5 µm and radii within 10%;
+  - border cells counted once, nothing outside the mask;
+  - nucleolus flag correct on at least 90% of the synthetic nuclei.
+- **Tests:** `tests/unit/test_detect.py`.
+
+#### M7-06 `detect` stage and `brainrec detect` · Medium · To do
+- **Objective:** run detection per slice, resumable (C6, C7).
+- **Outputs:**
+  - `run_detect` (one 2x pass per slide, resume per slice, overwrite guard, counts and time per slice);
+  - the interim command `brainrec detect --slices A-B [--overwrite]`.
+- **Depends on:** M7-05, M4-04 (shared CLI file). **Files:** `src/brainrec/detect/stage.py`, `src/brainrec/pipeline/cli.py`.
+- **Acceptance:** a second run reads no pixels; changed settings need `--overwrite`.
+- **Tests:** `tests/unit/test_detect_stage.py`, `tests/unit/test_cli.py` (extended).
+
+### Component: cells
+
+#### M7-07 3D placement, cell layers and `cells` stage · High · To do
+- **Objective:** the first blobs in 3D. Each profile is placed as its own cell until M7-13.
+- **Subtasks:**
+  - **M7-07a** placement in the volume frame (C16: chained transform, scale, z as in the volume);
+  - **M7-07b** sharded Neuroglancer ellipsoid layer writer per type, and a reader for the tests (C17);
+  - **M7-07c** `run_cells` and `brainrec cells --slices A-B [--overwrite]`.
+- **Depends on:** M7-06. **Files:** `src/brainrec/cells/place.py`, `layers.py`, `stage.py`, `src/brainrec/pipeline/cli.py`.
+- **Acceptance:** AC12 on synthetic data; at most about 20 files per layer.
+- **Tests:** `tests/unit/test_cells_place.py`, `test_cell_layers.py`, `test_cli.py`.
+
+#### M7-12 Local alignment at cell scale · High · To do
+- **Objective:** per pair, a displacement field k → k−1 accurate to 1 to 2 µm, computed from the nuclei on top of the pair transform (C15, R16).
+- **Subtasks:**
+  - **M7-12a** coarse offset per window, by correlating nuclei maps drawn from the profile tables (no slide reads);
+  - **M7-12b** fine robust fit of the nuclei centres per window;
+  - **M7-12c** smooth field with confidences, unreliable windows filled from their neighbours;
+  - **M7-12d** stored in `cells/pair_{k}.npz`, with resume per pair.
+- **Depends on:** M7-07, M7-03; method from M7-01b. **Files:** `src/brainrec/cells/align.py`.
+- **Acceptance:**
+  - synthetic: a known local deformation is recovered within 1 µm at 90% of the grid nodes;
+  - real: the share of recurring nuclei per pair is reported.
+- **Tests:** `tests/unit/test_cells_align.py`.
+
+#### M7-13 Linking profiles into 3D cells · High · To do
+- **Objective:** one cell, one blob (F19).
+- **Subtasks:**
+  - **M7-13a** link rule (C15);
+  - **M7-13b** chains, representative profile and cell id (C16);
+  - **M7-13c** the `cells` stage places chains instead of single profiles, and flags over-long chains;
+  - **M7-13d** 3D size from the chain once `section_thickness_um` is set.
+- **Depends on:** M7-12. **Files:** `src/brainrec/cells/link.py`, `stage.py`.
+- **Acceptance:** AC13 on synthetic data. The same code on sections with gaps leaves every profile its own cell.
+- **Tests:** `tests/unit/test_cells_link.py`.
+
+#### M7-14 Cell table and QuPath export · Low · To do
+- **Objective:** the cell table as the main result (F18, F20, C18).
+- **Outputs:**
+  - `cells/table.csv`;
+  - `cells/qupath/{id}.geojson` for the requested slices (GeoJSON is large; the size is measured in M7-09).
+- **Depends on:** M7-13. **Files:** `src/brainrec/cells/export.py`.
+- **Acceptance:** every cell in the table; the export of one real slice opens in QuPath on the original slide with the detections in place (owner).
+- **Tests:** `tests/unit/test_cells_export.py`.
+
+#### M7-15 Density maps per type · Medium · To do
+- **Objective:** 3D density per type (F21, C18).
+- **Outputs:** `density.zarr` and a viewer layer with a colour map, also rendered in 3D. Units are per mm² of section until the thickness is known, then per mm³ (Abercrombie where profiles are counted).
+- **Depends on:** M7-13, M7-08. **Files:** `src/brainrec/cells/density.py`, `src/brainrec/serve/app.py`.
+- **Acceptance:**
+  - synthetic: a known density is recovered within 5%;
+  - the correction is applied only when the thickness is set.
+- **Tests:** `tests/unit/test_cells_density.py`.
+
+### Component: serve
+
+#### M7-08 Viewer: cell layers, sliders, tissue opacity · Medium · To do
+- **Objective:** F17 in the browser.
+- **Outputs:** `neuroglancer_state(..., cell_layers=None, density_layers=None)`; existing calls keep working. The new arguments add:
+  - one annotation layer per type (colour, size and confidence sliders in the layer panel);
+  - an opacity control for the tissue layer down to fully transparent;
+  - a 3D layout.
+- **Depends on:** M7-07. **Files:** `src/brainrec/serve/app.py`, `src/brainrec/pipeline/cli.py` (serve finds the layers).
+- **Acceptance:** the state is accepted by Neuroglancer's parser; the layers and controls are present.
+- **Tests:** `tests/unit/test_serve.py` (extended).
+
+### Component: qc
+
+#### M7-16 Detection QC · Medium · To do
+- **Objective:** see where detection is doubtful.
+- **Outputs:** `qc/cells_report.json` with:
+  - counts and density per slice and type;
+  - flags: outliers against the neighbouring slices, blurred tiles (sharpness score), folds;
+  - review crops with the detected outlines.
+- **Depends on:** M7-06. **Files:** `src/brainrec/qc/cells.py`.
+- **Acceptance:** a synthetic blurred or empty slice is flagged.
+- **Tests:** `tests/unit/test_qc_cells.py`.
+
+### Component: detect (accuracy and types)
+
+#### M7-10 Detection accuracy · Medium · To do
+- **Objective:** AC10 for detection.
+- **Method:** tune the detector on the training crops; report on the test crops only once.
+- **Depends on:** M7-02 and the owner's labels, M7-09. **Files:** `src/brainrec/detect/nuclei.py` (parameters), the evaluation report in `docs/REQUIREMENTS.md` section 7.
+- **Acceptance:** F1 and radius error at or above the agreed gates, or the gap reported plainly with its causes.
+
+#### M7-11 Cell types · High · To do
+- **Objective:** types with a probability (F16).
+- **Subtasks:**
+  - **M7-11a** features per profile;
+  - **M7-11b** classifier (scikit-learn if permitted, Q19);
+  - **M7-11c** "unclassified" threshold;
+  - **M7-11d** colours and proportions per type in the layers;
+  - **M7-11e** confusion table on the test crops.
+- **Depends on:** M7-10. **Files:** `src/brainrec/detect/classify.py`.
+- **Acceptance:** AC10 for types (targets set after M7-01).
+- **Tests:** `tests/unit/test_classify.py`.
+
+### Component: integration
+
+#### M7-09 Real run, slices 1 to 10, one type (first 3D cells) · Medium · To do
+- **Objective:** first blobs on real data.
+- **Steps:**
+  - `detect` and `cells` on slices 1 to 10, every profile its own cell, one type;
+  - run time and output size recorded;
+  - owner review in the browser.
+- **Depends on:** M7-08.
+- **Acceptance:** the blobs sit on the nuclei; the viewer stays usable; run time and size are recorded.
+
+#### M7-17 Real run, slices 1 to 10, all types, linked · Medium · To do
+- **Objective:** close M7 on real data.
+- **Steps:**
+  - full `detect` and `cells` run;
+  - evaluation on the test crops;
+  - linking report per pair;
+  - cell table and QuPath check;
+  - density maps;
+  - owner review.
+- **Depends on:** M7-11, M7-13, M7-14, M7-15, M7-16, M4-05.
+- **Acceptance:** AC10 to AC14.
+
+---
+
+## M8 Vessels, other structures and non-rigid refinement (after the MVP)
+
+Planned in detail when reached (decision 0005, F22). Candidate tasks:
+- **M8-01 Spike:**
+  - vessel detection: lumens, red blood cells, endothelial nuclei;
+  - continuity of vessels across sections;
+  - 3D representation: linked profiles drawn as tubes, or a label volume with meshes;
+  - which other structures to show (Q14, Q15).
+- **M8-02** Vessel detection per section.
+- **M8-03** Vessel linking into a 3D network, with a viewer layer.
+- **M8-04** Landmark-based local refinement:
+  - vessels and the cell-scale fields of M7-12;
+  - chained over the range;
+  - applied to the cells.
+- **M8-05** Non-rigid volume: the volume builder warps with the refined fields. This is an interface change of `build_volume`, explained before it is made.
+- **M8-06** Other structures as agreed with the supervisor: cortical layers, grey/white-matter boundary, pial surface, lesion outline.
+
+## M9 Suspicious cells (after the MVP)
+
+Planned in detail when reached (F23). Candidate tasks:
+- **M9-01** Criteria from the supervisor (Q8, Q12), turned into rules or an outlier model on the stored measurements, without a second detection.
+- **M9-02** Suspicious-cell layer and review list, exported to QuPath.
+- **M9-03** Review by a pathologist; accuracy of the flags.

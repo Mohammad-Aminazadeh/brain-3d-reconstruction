@@ -1,6 +1,6 @@
 # Architecture
 
-Status: approved design; `slides`, `catalog`, `store`, `volume` (unregistered) and `serve` implemented in M2. Updated 2026-10-19 for tissue-only processing (F12) and feature-based registration (F13), see `docs/decisions/0003-tissue-only-feature-based-registration.md`, and 2026-11-04 for centre-first alignment and best effort for failed pairs, see `docs/decisions/0004-centre-first-best-effort-registration.md`. Interface signatures below are the contract; changing them requires an explicit discussion (see CLAUDE.md).
+Status: approved design; `slides`, `catalog`, `store`, `volume` (unregistered) and `serve` implemented in M2. Updated 2026-10-19 for tissue-only processing (F12) and feature-based registration (F13), see `docs/decisions/0003-tissue-only-feature-based-registration.md`, and 2026-11-04 for centre-first alignment and best effort for failed pairs, see `docs/decisions/0004-centre-first-best-effort-registration.md`, and 2026-11-06 for cells and structures as 3D objects (components `detect` and `cells`, milestone M7), see `docs/decisions/0005-cells-in-3d.md`. Interface signatures below are the contract; changing them requires an explicit discussion (see CLAUDE.md).
 
 ## 1. Overview
 
@@ -15,6 +15,12 @@ Principles:
 5. **Two processes only:** the offline pipeline (CLI) and the tile server (which also serves viewer files).
 6. **Only tissue matters (F12).** Each slice's tissue mask defines what is processed: registration detects, matches and scores features inside the mask only, and the volume stores only tissue (outside the mask = background, stored as pure white; volume limited to the tissue extent). The viewer shows the background transparent.
 7. **Registration is feature-based (F13).** The clearly visible tissue boundaries give the initial alignment; keypoint features inside the tissue, matched between neighbouring slices and fitted robustly (RANSAC), give the transform.
+8. **Cells are objects, not pixels (F16 to F19).**
+   - Nuclei are detected per section, in the slice frame, inside the tissue mask.
+   - Their geometry and measurements are stored as tables, separate from pixels and transforms.
+   - Profiles of one cell in consecutive sections are linked into one 3D cell, using a local alignment at cell scale computed from the nuclei.
+   - Cells reach 3D only through the registration transforms, and are shown as separate viewer layers over the unchanged image volume.
+9. **Nothing is invented between sections.** No interpolated images or cells; only densities (F21) are smoothed over a coarse grid.
 
 ## 2. Component responsibilities
 
@@ -24,10 +30,12 @@ Principles:
 | `catalog` | Discover files, parse `N_H`, validate completeness and order, hold project config | Data folder, config | Ordered slice list | `slides` |
 | `preprocess` | Create the **tissue mask** (from colour saturation) and then the registration image per slice; the mask defines what counts as tissue for every later stage (debris removed, detached fragments kept) | `SlideReader` | `reg/{id}.tif`, `reg/{id}.json`, `mask/{id}.png` | `slides`, `store` |
 | `registration` | Per consecutive pair: boundary-based initial alignment from the masks, ORB keypoints inside the masks, guided matching and robust (RANSAC) similarity fit, coarse-to-fine, boundary fallback; chain to the reference slice. Drift correction post-MVP | Reg images, masks | `transforms/pair_{id}.json`, `transforms/chained_{id}.json` (transform + match quality) | OpenCV, `store` |
-| `qc` | Quality metrics inside the tissue only (feature inliers and residual, masked correlation, mask overlap), overlays with tissue outlines, flagging. Manual overrides post-MVP | Reg images, masks, transforms | `qc/report.json`, overlay images | `registration` |
+| `qc` | Quality metrics inside the tissue only (feature inliers and residual, masked correlation, mask overlap), overlays with tissue outlines, flagging. Manual overrides post-MVP. Detection QC (M7-16): counts and density per slice and type, flags, review crops, accuracy report | Reg images, masks, transforms; cell files | `qc/report.json`, overlay images, `qc/cells_report.json`, review crops | `registration`, `detect` (file contract C13 only) |
+| `detect` | Per slice: detect nuclei in overlapping tiles at 2x inside the tissue mask, measure them (centre, radius, outline, shape, staining, nucleolus), classify them by type with a probability (M7) | `SlideReader`, mask, type table | `cells/{id}.npz`, `cells/{id}.json` (C13) | `slides`, `store` |
+| `cells` | Per slice range: local alignment at cell scale per pair, linking of profiles into 3D cells, placement in the volume frame, Neuroglancer cell layers per type, cell table and QuPath export, density maps (M7) | Cell files, transforms, masks, config | `cells/pair_{k}.npz`, `cells/layer_<type>/`, `cells/table.csv`, `cells/qupath/{id}.geojson`, `density.zarr` (C15 to C18) | `registration` (transforms), `store` |
 | `volume` | Resample slices through transforms tile by tile into the pyramid, **tissue only**: masks applied, background removed, canvas limited to the tissue | Slides, transforms, masks, voxel size | `volume.zarr` | `slides`, `registration`, zarr |
-| `serve` | Serve volume chunks over HTTP (later: on-demand native-resolution tiles) | `volume.zarr` | HTTP responses | FastAPI, `volume` |
-| `viewer` | 3D and orthogonal views, zoom, level-of-detail streaming | HTTP | Rendered view | Neuroglancer (MVP) |
+| `serve` | Serve volume chunks, cell layers and density maps over HTTP (later: on-demand native-resolution tiles) | `volume.zarr`, `cells/layer_<type>/`, `density.zarr` | HTTP responses | FastAPI, `volume` |
+| `viewer` | 3D and orthogonal views, zoom, level-of-detail streaming; cell layers per type (show, hide, colour), size and confidence sliders, tissue-layer opacity down to transparent | HTTP | Rendered view | Neuroglancer (MVP) |
 | `pipeline` | CLI and orchestrator; per-slice status; resume | Config | Manifest | all stages |
 | `store` | File layout, formats and manifest shared by all stages | n/a | n/a | none |
 
@@ -47,12 +55,21 @@ flowchart LR
     SL -->|tile reads| VOL
     VOL --> ZARR[("volume.zarr<br/>multi-res pyramid")]
     ZARR --> SRV[tile server]
+    SL -->|2x tiles| DET[detect<br/>nuclei inside masks]
+    PRE -->|tissue masks| DET
+    DET -->|cell profiles per slice| CEL[cells<br/>local alignment, linking,<br/>3D placement, exports, density]
+    REG -->|transforms| CEL
+    CEL --> LAY[("cell layers, cell table,<br/>density.zarr")]
+    DET -.->|counts, review crops| QC
+    LAY --> SRV
     SRV --> WEB[web viewer]
     SL -. post-MVP: native-res tiles .-> SRV
     REG -. post-MVP .-> SRV
     ORCH[pipeline CLI] -.controls.-> PRE
     ORCH -.-> REG
     ORCH -.-> VOL
+    ORCH -.-> DET
+    ORCH -.-> CEL
 ```
 
 ## 4. Component dependencies
@@ -65,6 +82,13 @@ flowchart TD
       pipeline --> registration
       pipeline --> volume
       pipeline --> qc
+      pipeline --> detect
+      pipeline --> cells
+      detect --> slides
+      cells --> registration
+      qc -. C13 file contract .-> store
+      detect --> store
+      cells --> store
       catalog --> slides
       preprocess --> slides
       volume --> slides
@@ -87,6 +111,8 @@ flowchart TD
     pytest -.tests.-> slides
     pytest -.tests.-> registration
     pytest -.tests.-> volume
+    pytest -.tests.-> detect
+    pytest -.tests.-> cells
     synthetic -.-> pytest
 ```
 
@@ -163,13 +189,44 @@ build_report(work, ids, pairs: dict[int, tuple[PairResult, PairScore]], cfg) -> 
     # pairs keyed by moving id; ValueError if a consecutive pair is missing, of another neighbour or
     # outside the range; flagged = is_flagged(score, qc_min_ncc, qc_min_dice): a score below its
     # threshold (None = not checked). write_report(work, report) -> qc/report.json, atomic
+run_qc(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=False) -> StageResult
+    # implemented (M4-04), C7: score_pair + render_overlay per consecutive pair, then the report;
+    # resumes per pair (see C6); FileNotFoundError naming unregistered pairs
 apply_override(...)                                      # post-MVP
+cells_report(work, ids, cfg) -> dict                     # M7-16: counts and density per slice and type,
+    # flags (outliers, blur, folds), review crops; evaluate(labels, cells) -> scores (M7-02, M7-10)
+
+# detect                             # M7, Proposed; names and fields fixed in M7-00 (C13, C14)
+detect_nuclei(rgb: ndarray, mask: ndarray, um_per_px: float, cfg) -> Profiles   # one tile;
+    # centres, radii (equivalent area), outlines, measurements (shape, staining, nucleolus) in µm
+classify(profiles: Profiles, model) -> Profiles          # type id and probability; "unclassified" if doubtful
+run_detect(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=False) -> StageResult
+    # C7; resumes per slice (like preprocess); tiles at 2x with overlap, a profile belongs to the tile
+    # holding its centre; nothing outside the mask; writes cells/{id}.npz and cells/{id}.json
+
+# cells                              # M7, Proposed; fixed in M7-00 (C15 to C18)
+align_local(fixed: Profiles, moving: Profiles, t_pair: Transform2D, cfg) -> LocalField
+    # cell-scale displacement (µm) on a grid inside the overlap, on top of the pair transform;
+    # from the nuclei (feature-based, robust fit per window); confidence per grid node
+link_profiles(fixed, moving, field: LocalField, cfg) -> Links      # one-to-one, within a tolerance
+build_cells(profiles: dict[int, Profiles], links: dict[int, Links]) -> Cells3D
+    # chains of linked profiles; representative = the largest profile
+place_cells(cells: Cells3D, chained: dict[int, Transform2D], spec) -> Placed  # volume frame, µm
+write_cell_layers(placed, types, out_dir) -> list[Path]  # Neuroglancer precomputed ellipsoid
+    # annotations, one sharded layer per type (C17); read_cell_layer(path) for tests
+export_table(placed, out: Path), export_qupath(profiles, slice_id, out: Path)   # C18
+density_map(placed, spec, cfg) -> Path                   # density.zarr, one channel per type (C18)
+run_cells(catalog, work, cfg, manifest, overwrite=False) -> StageResult
+    # C7 shape without slide reads; local alignment and links resume per pair (like register),
+    # placement, layers, exports and density are rebuilt per range
 
 # store                              # implemented (M2)
 WorkDir(root).manifest, .volume        # the only place that knows file names
     .reg_image(id), .reg_meta(id), .mask(id)                 # implemented (M3-01), C4
     .pair_transform(k), .chained_transform(id)               # implemented (M3-01), C5
     .qc_report, .qc_overlay(k); .reg_dir, .mask_dir, .transforms_dir, .qc_dir   # (M3-01), C10
+    .cell_profiles(id), .cell_meta(id), .cell_pair(k), .cell_layer(type), .cell_table,
+    .qupath(id), .density                                    # M7-04 (Proposed), C13 to C18
     # ids must be positive integers; anything else raises ValueError
 Manifest(path).get(key), .set(key, value)   # JSON, atomic write
 
@@ -198,6 +255,9 @@ neuroglancer_state(volume_url, ome) -> dict   # RGB layer; OME axis c mapped to 
     # implemented (M3-12): shader draws pure white (background, C11) transparent, every other voxel
     # in its RGB colour; panel backgrounds black (crossSection/projectionBackgroundColor);
     # displayDimensions x, y, z, so the "xy" panel shows the section plane (axes are stored z, y, x)
+    # M7-08 (Proposed): optional arguments cell_layers and density_layers; existing calls keep working.
+    # One annotation layer per type (colour, size and confidence sliders), an opacity control for the
+    # tissue layer down to fully transparent, density layers with a colour map
 launch_local_viewer(state, port=0) -> neuroglancer.Viewer   # served from 127.0.0.1; caller keeps it alive (weak refs)
 GET /volume.zarr/{path}                # Zarr metadata and shard files
 GET /tile/{z}/{level}/{x}/{y}          # post-MVP, native-resolution tile
@@ -207,14 +267,17 @@ brainrec --config C preprocess --slices A-B [--overwrite]
 brainrec --config C register --slices A-B [--overwrite]   # chained to slice A
 brainrec --config C volume --slices A-B [--overwrite] [--unregistered]
     # registered, tissue-only (C8, C11) from load_chained and the masks; --unregistered = M2 mode
+brainrec --config C qc --slices A-B [--overwrite]         # implemented (M4-04): table per pair,
+    # thresholds, flagged pairs; exit status 0 also with flagged pairs
+brainrec --config C detect --slices A-B [--overwrite]     # M7-06, interim: cell profiles per slice
+brainrec --config C cells --slices A-B [--overwrite]      # M7-07: link, place, layers, table, density
 brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512]   # viewer on port+1
     # --slices: A-B or N. User errors (config, slice range, missing step, other settings without
     # --overwrite, drive not connected) end with one line `error: ...`, exit status 1; a failed pair
     # is not an error: `register` names it in a warning line and exits 0 (M3-13);
     # other exceptions are bugs and keep their traceback.
-brainrec run [--stage S] [--slices A-B]                # M5
+brainrec run [--stage S] [--slices A-B]                # M5; stages preprocess, register, qc, volume, detect, cells
 brainrec status                                        # M5
-brainrec qc                                            # M4
 ```
 
 ### 5.1 Cross-cutting contracts (fixed in M3-00, 2026-10-20)
@@ -268,6 +331,7 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - A signature contains the stage's parameters, its id list and a hash of the upstream stage's signature. Changed inputs therefore invalidate downstream work; they are never silently reused.
 - *Refinement (M3-03):* for **per-slice** stages (`preprocess`), the signature holds only the parameters (and an algorithm version), and each done slice records a fingerprint of its source file (name, size, modification time) under `sources`. Extending a range keeps finished slices; a changed source is redone; changed parameters raise `StageExistsError` unless `overwrite`. Stages whose result depends on the whole set of slices (`register`, `volume`) keep the id list in their signature.
 - *Refinement (M3-08):* `register` resumes **per pair**. A pair is redone when the registration settings change (then `StageExistsError` unless `overwrite`), or when its inputs change: a hash of the preprocess signature and both slices' source fingerprints. The chained transforms are rebuilt from the pair files on every run (cheap), so extending the range or choosing another reference slice never redoes finished pairs.
+- *Refinement (M4-04):* `qc` resumes **per pair**. A pair is redone when its pair file or one of its two slices' registration image, mask or metadata changed (SHA-256 of the files); its scores are kept in the manifest (`scores`). The signature holds only `reg_edge_weight` and a version: the thresholds `qc_min_ncc` and `qc_min_dice` only decide the flags, which are re-evaluated on every run.
 - `StageResult(done, skipped)`, `StageExistsError`, `fingerprint()` and `write_atomic()` (temporary file + rename) live in `store/stage.py`.
 
 **C7 Stage shape.**
@@ -318,6 +382,79 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - **`failed`:** the chosen candidate's IoU is below `boundary_min_iou`. It is still used as a best effort (M3-13): `register` chains every pair, warns about each failed pair and exits 0; the pair file keeps status `failed`. Nothing is accepted silently: QC always flags failed pairs.
 - QC separately flags pairs whose scores are below `qc_min_ncc` or `qc_min_dice` (C10).
 
+### 5.2 Cell contracts (Proposed, 2026-11-06; fixed in M7-00 after the spike M7-01)
+
+Drafts from decision 0005. Field names, file layouts and thresholds are fixed, with the owner's approval, in M7-00; until then they are Proposed.
+
+**C13 Cell profile file (per slice, slice frame).**
+- **`cells/{id}.npz`**, one row per detected profile:
+  - **position and size:** centre `x_um`, `y_um` (C1, slice frame) and radius `r_um` (equivalent-area circle);
+  - **shape:** area, outline (simplified polygon), eccentricity, solidity;
+  - **staining:** mean and spread of the hematoxylin channel, texture;
+  - **nucleolus:** visible or not;
+  - **classification:** detection confidence, type id (C14) and type probability.
+- **`cells/{id}.json`:** `{"schema": "brainrec.cells/1", "slice_id", "source", "downsample", "mpp_um", "method", "version", "n_profiles"}`.
+- **Rules:**
+  - tiles overlap by more than the largest nucleus;
+  - a profile belongs to the tile that contains its centre, so none is cut or counted twice;
+  - no centre lies outside the tissue mask (F12).
+
+**C14 Type table (config).**
+- **Entry fields:** a list of `{id, name, colour, proportions [rx, ry, rz], min_radius_um, max_radius_um}`.
+- **Ids:** stable; id 0 = unclassified.
+- **Proposed start:** neuron, glia, vessel-wall cell (question Q9). Suspicious types are added in M9.
+
+**C15 Local alignment and links (per pair, keyed by the moving slice k, as C5).**
+- **`cells/pair_{k}.npz`** holds:
+  - the local displacement field k → k−1 in µm, on a grid (Proposed 100 µm) inside the overlap of both masks, on top of the pair transform, with a confidence per node;
+  - the links: index pairs of profiles in k and k−1.
+- **Linking rule (Proposed):**
+  - after local alignment, two profiles are linked if their centres are closer than `link_tolerance_um` (Proposed: the larger of 1.5 µm and half the smaller radius);
+  - one-to-one, closest first;
+  - chains longer than `link_max_sections` are split and flagged (for example a vessel wall mistaken for one cell).
+- **Independent of section thickness.**
+- If the sections have gaps, few links are found and every profile stays its own cell.
+
+**C16 3D cell and placement.**
+- **A 3D cell** is a chain of one or more linked profiles. Its representative profile is the largest one, cut closest to the cell's equator.
+- **Position:**
+  - (x, y) is the representative centre mapped by the chained transform of its slice (C2, C5), so the blob sits on its nucleus in the volume;
+  - z is that slice's position, exactly as in the volume.
+- **Radius:**
+  - the representative radius × the transform's scale;
+  - the blob is a sphere in µm × the type's proportions (C14), so its height does not depend on the unknown thickness.
+- **Thickness-dependent values:** once `section_thickness_um` is set, a 3D size estimate from the chain (profile radii over z) is added as a measurement.
+- **Cell id:** unique and stable, uint64 = slice id × 2³² + profile index of the representative.
+
+**C17 Cell layers (Neuroglancer precomputed annotations).**
+- **Annotations:** type `ellipsoid`, coordinate space x, y, z in µm, matching the volume.
+- **Layers:** one layer per type, `cells/layer_<type>/`.
+- **Properties:** radius, type probability, detection confidence, nucleolus, slice, number of linked profiles.
+- **Spatial index:** multi-level, so few cells are drawn when zoomed out.
+- **File count:** spatial index and by-id index sharded (`neuroglancer_uint64_sharded_v1`); no relationships. At most about 20 files per layer (exFAT rule).
+- **Writer:** an own numpy writer, because the `neuroglancer` Python writer is unsharded and single-level. Tests use a matching reader.
+
+**C18 Cell table, QuPath export and density maps.**
+- **`cells/table.csv`:** one row per 3D cell, with:
+  - id, type, probability, 3D position (µm, volume frame), radius;
+  - measurements of the representative profile;
+  - slice id, number of profiles;
+  - position in the source slide (µm and level-0 pixels).
+- **`cells/qupath/{id}.geojson`:** the profiles of one slice as QuPath detections (outline, class, measurements), in level-0 pixels of the source slide, to review on the original slide.
+- **`density.zarr`:**
+  - **format:** OME-Zarr, one channel per type, about 50 µm in x and y, one or a few sections in z;
+  - **unit:** profiles per mm² of section until `section_thickness_um` is set, then cells per mm³ (linked cells; Abercrombie correction where profiles are counted);
+  - **smoothing:** Gaussian over the grid, documented in the attributes.
+
+**Extensions of C6 and C9 (Proposed):**
+- **C6:** manifest keys `detect` (per slice with source fingerprints, like `preprocess`) and `cells` (per pair for local alignment and links, like `register`; per range for placement, layers, exports and density).
+- **C9:** new fields, defined once in M7-00:
+  - `section_thickness_um` (default null = unknown);
+  - `detect_downsample` (2), `detect_method`, `detect_tile_um`;
+  - `cell_types` (C14);
+  - `link_tolerance_um`, `link_max_sections`, `align_grid_um`;
+  - `density_grid_um` (50).
+
 ## 6. Technology decisions
 
 | Concern | Choice | Rationale | Trade-off |
@@ -326,11 +463,15 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 | NDPI reading | OpenSlide (`openslide-python` + `openslide-bin`), tifffile as fallback | Lazy tile access to NDPI; `openslide-bin` bundles the native library in the venv | |
 | Storage | OME-Zarr 0.5 on Zarr v3, sharded (512 px chunks in 4096 px shards), zstd lossless | Chunked, multi-resolution, resumable; shards keep the file count low on the exFAT drive (512 KB blocks, a `._` file per file) | Lossless only: Neuroglancer's Zarr reader has no JPEG codec (see docs/decisions/0001) |
 | Image ops | numpy, scikit-image, OpenCV | Standard and fast | |
-| Registration | OpenCV: ORB features inside the tissue masks, guided two-pass matching (windows around the boundary estimate, then around the first fit), RANSAC similarity fit (`estimateAffinePartial2D`); coarse-to-fine 64x then 32x; tissue-boundary initialisation and fallback. SimpleITK only for an optional intensity refinement | Owner requirement (F13); feature matching is rotation-invariant (no angle sweep) and robust to outliers; OpenCV is already a dependency | Consecutive sections do not share the same cells, so matches must come from larger structures at about 7 µm/px; feature-poor pairs fall back to boundary alignment |
+| Registration | OpenCV: ORB features inside the tissue masks, guided two-pass matching (windows around the boundary estimate, then around the first fit), RANSAC similarity fit (`estimateAffinePartial2D`); coarse-to-fine 64x then 32x; tissue-boundary initialisation and fallback. SimpleITK only for an optional intensity refinement | Owner requirement (F13); feature matching is rotation-invariant (no angle sweep) and robust to outliers; OpenCV is already a dependency | At about 7 µm/px matches come from larger structures (vessels, layers, the edge); feature-poor pairs fall back to boundary alignment. Cell-scale alignment (a few µm) is a separate local step for linking cells (C15) |
 | Parallelism | `concurrent.futures`; Dask only if needed | Simplicity | |
 | Server | FastAPI + uvicorn | Lightweight, testable | |
 | Viewer | Neuroglancer (MVP), served locally by the `neuroglancer` Python package | Solves 3D streaming and orthogonal views, saving weeks; local serving avoids a public page reading from localhost | Less control over UX; replaceable, isolated to `serve/` |
 | Config | YAML + pydantic | Validated and versionable | |
+| Cell detection (M7) | Baseline: hematoxylin colour separation (scikit-image), threshold, split of touching nuclei (OpenCV, scikit-image). Compared in M7-01 with pretrained deep-learning detectors (Cellpose, StarDist or InstanSeg) | Baseline needs no new dependency; pretrained detectors are usually better on pale and touching nuclei | Deep learning needs PyTorch (about 1 to 2 GB) and the owner's permission; slower without a GPU |
+| Cell types (M7-11) | Classifier on the measurements of each profile (scikit-learn, Proposed) trained on owner labels | Small, explainable, fast | New dependency (permission needed); limited by what the stain shows |
+| Cell layers (M7-07) | Neuroglancer precomputed annotations (ellipsoids), sharded, own numpy writer | Native 3D blobs with properties, shaders and level of detail in the existing viewer | The format must be written by us; viewer speed with millions of cells is a risk (R13) |
+| Cell exports (M7-14) | CSV (standard library) and GeoJSON for QuPath | Readable by pathologists' tools without our code | |
 | Packaging | `pyproject.toml` (uv or pip) | Reproducible | |
 | Testing | pytest, synthetic slice generator | Independent tests without the real data | |
 
@@ -345,6 +486,7 @@ Brain 3D Reconstruction/
 ├── src/brainrec/
 │   ├── slides/  catalog/  preprocess/  registration/
 │   ├── qc/  volume/  serve/  store/  pipeline/
+│   ├── detect/  cells/                               (M7)
 ├── viewer/
 ├── tests/ (unit/, integration/, synthetic/)
 ├── scripts/
@@ -355,6 +497,9 @@ Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
     reg/{id}.png  reg/{id}.json  mask/{id}.png
     transforms/pair_{k}.json  transforms/chained_{k}.json
     qc/report.json  qc/overlay_{k}.png
+    cells/{id}.npz  cells/{id}.json  cells/pair_{k}.npz          (M7, C13, C15)
+    cells/layer_<type>/  cells/table.csv  cells/qupath/{id}.geojson   (M7, C17, C18)
+    density.zarr  qc/cells_report.json                           (M7, C18)
 ```
 
 ## 8. Risks and limitations
@@ -364,7 +509,7 @@ Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
 - **Drive disconnects:** the drive dropped out once during an M2 build. Builds resume per slice; a disconnect costs at most one slice.
 - **Tissue mask errors (F12):** the mask now decides what is kept. Too tight cuts tissue away; too loose keeps glass, debris, labels or bubbles. Mitigated by a safety margin (about 50 µm, proposed), dropping small components, and mask outlines on the contact sheet and QC overlays for owner review.
 - **Coarse tissue edge:** the mask comes from the 32x image (about 7 µm/px), so at 0.88 µm/px the tissue edge follows the mask's steps, softened by the margin. A finer edge is a later improvement.
-- **Feature matching on histology (F13):** consecutive sections do not contain the same cells; matches must come from larger structures (vessels, layers, the tissue edge). Repetitive texture can produce false matches; RANSAC and the inlier count guard against them, with boundary alignment as fallback. Measured in the real-data spike (risk R10).
+- **Feature matching on histology (F13):** at the registration resolution single cells are not resolved, and only some nuclei recur in the next section (2026-11-05 check, `docs/REQUIREMENTS.md` section 7); matches must come from larger structures (vessels, layers, the tissue edge). Repetitive texture can produce false matches; RANSAC and the inlier count guard against them, with boundary alignment as fallback. Measured in the real-data spike (risk R10).
 - **Drift:** errors accumulate across 140 chained pairs; mitigated by drift correction and QC; unsolved in general.
 - **Non-rigid distortion:** can deform real anatomy; kept behind a flag.
 - **Damaged sections** (tears, folds) will need manual overrides.
@@ -372,3 +517,12 @@ Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
 - **Viewer:** Neuroglancer needs a compatible Zarr layout and CORS; its UX may not suit.
 - **I/O:** the external drive is the speed limit; limit passes over each source slice.
 - **Environment:** OpenSlide needs a native install; nothing is installed until approved.
+- **Cells (M7, decision 0005):**
+  - **Accuracy on this stain (R11):** pale neuron nuclei, touching nuclei, folds and blur.
+  - **Run time (R12):** detection reads every slide at 2x, roughly 1 to 4 days for 140 slices, resumable per slice.
+  - **Viewer speed (R13):** millions of blobs.
+  - **Labelling time (R14).**
+  - **Unknown thickness and spacing (R8, R15):** they decide z proportions, 3D sizes and densities, but not detection or linking.
+  - **Alignment at cell scale (R16):** the registration leaves 20 to 80 µm local offsets, so linking needs a local alignment of 1 to 2 µm.
+  - **Profile size (R17):** a 2D profile underestimates the cell; mitigated by linking (largest profile) and the nucleolus flag.
+  - **Dependency weight (R18).**

@@ -265,6 +265,44 @@ def test_failed_pair_is_reported_but_does_not_stop(tmp_path, monkeypatch, capsys
     ]
 
 
+def test_qc_lists_pairs_and_flags(tmp_path, monkeypatch, capsys):
+    cfg = _synthetic(tmp_path, monkeypatch)
+    work = WorkDir(tmp_path / "work")
+    _run(cfg, "preprocess", "--slices", "1-2")
+    _run(cfg, "register", "--slices", "1-2")
+    capsys.readouterr()
+    _run(cfg, "qc", "--slices", "1-2")
+    out = capsys.readouterr().out.splitlines()
+    (row,) = json.loads(work.qc_report.read_text())["pairs"]
+    assert out[0].split() == ["pair", "status", "inliers", "rms_um", "ncc", "dice", "flag"]
+    assert out[1].split() == [
+        "1<-2", row["status"], str(row["n_inliers"]), f"{row['rms_um']:.1f}",
+        f"{row['ncc']:.3f}", f"{row['dice']:.3f}",
+    ]  # fmt: skip
+    assert out[2:] == [
+        "thresholds: qc_min_ncc not checked, qc_min_dice 0.9",
+        f"qc (pairs): 1 done, 0 up to date; report {work.qc_report}",
+        "flagged: none",
+    ]
+    assert work.qc_overlay(2).exists()
+
+    # stricter thresholds: the pair is flagged without being scored again
+    strict = _write_config(tmp_path, tmp_path / "data", base_downsample=32, qc_min_ncc=0.999)
+    _run(strict, "qc", "--slices", "1-2")
+    out = capsys.readouterr().out.splitlines()
+    assert out[1].endswith("  FLAGGED")
+    assert out[2:] == [
+        "thresholds: qc_min_ncc 0.999, qc_min_dice 0.9",
+        f"qc (pairs): 0 done, 1 up to date; report {work.qc_report}",
+        "flagged: 1<-2",
+    ]
+
+
+def test_qc_before_register(tmp_path):
+    message = _error(_config(tmp_path), "qc", "--slices", "1-3")
+    assert message == "error: pairs 1<-2, 2<-3 are not registered; run register first"
+
+
 def test_volume_before_register(tmp_path, monkeypatch):
     calls = _record(monkeypatch)
     message = _error(_config(tmp_path), "volume", "--slices", "1-3")
