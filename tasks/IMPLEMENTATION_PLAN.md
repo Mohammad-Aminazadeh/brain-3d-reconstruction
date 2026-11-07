@@ -10,6 +10,7 @@ Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06)
   - M4-01 to M4-04 (pair score, overlay, QC report, `brainrec qc`; M4-04 done 2026-11-06).
 - **M4-05 done (2026-11-07):** owner accepted the QC; M4 closed. Peak check added as M4-06.
 - **M7-01 done (2026-11-07):** InstanSeg at 2x as the working detector, StarDist second; linking needed (adjacent sections supported); viewer handles 4 million blobs. Next: M7-02 (labelled cells), then M7-00 (contracts).
+- **M7-02 done (2026-11-08):** 20 label crops, QuPath files, labelling guide, evaluation code. Classification rules changed by the owner (decision 0006): every cell classified by appearance with a confidence; new task M7-18 (appearance groups) before the labelling. Next: M7-18.
 - **New goal (owner, 2026-11-05/06):** cells (later vessels and other structures) as 3D objects inside a volume that can be made transparent. This adds milestone M7 before M5 (section 10).
 - **Prerequisites:** none of the new tasks is needed before M4-04 or M4-05, and no done task has to be redone.
 - **Open inputs:** section thickness (the owner will supply it) and the supervisor's answers (`docs/REQUIREMENTS.md` section 6.2).
@@ -314,7 +315,8 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 | 2 | **M4-05** Real QC review, slices 1 to 10 (done 2026-11-07, closes M4) | Owner |
 | 3 | **M7-01** Real-data spike: detector, nucleolus, recurrence after cell-scale alignment, viewer load (done 2026-11-07) | Owner decisions |
 | 3b | M4-06 QC peak check (owner's request, 2026-11-07; fill-in while M7 waits for decisions) | Tests |
-| 4 | **M7-02** Labelled cells and evaluation (the owner then labels in parallel) | Labels delivered |
+| 4 | **M7-02** Labelled cells and evaluation (done 2026-11-08; the owner labels after M7-18) | Crops and guide delivered |
+| 4b | **M7-18** Appearance groups for the class list (added 2026-11-08; before the owner labels) | Owner fixes the class list |
 | 5 | **M7-00** Cell contracts C13 to C18 | Owner approval |
 | 6 | M7-03 synthetic nuclei and 3D cells; M7-04 layout and cell files | Tests |
 | 7 | M7-05 nucleus detection | Tests |
@@ -334,7 +336,7 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 ### 10.3 Critical path and parallel work
 
 - **Critical path:** M4-04 → M4-05 → M7-01 → M7-00 → M7-03 → M7-05 → M7-06 → M7-07 → M7-09 → M7-12 → M7-13 → M7-17 → M5-01 → M5-02 → M5-06 → M6.
-- **Parallel branch:** labelling, M7-02 → owner labels → M7-10 → M7-11. It joins at M7-17.
+- **Parallel branch:** labelling, M7-02 → M7-18 (class list) → owner labels → M7-10 → M7-11. It joins at M7-17.
 - **Off the path:** M7-04, M7-08, M7-14, M7-15 and M7-16. They fill waiting time during owner reviews and labelling.
 - **Answers that gate tasks:**
   - Q19 (dependencies) for the detector comparison in M7-01 and for M7-11;

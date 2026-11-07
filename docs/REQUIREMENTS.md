@@ -21,7 +21,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 | F13 | **Feature-based alignment.** Alignment detects edges and features (tissue boundaries and internal structures) in each image, finds the corresponding features in consecutive images and aligns the images by them | Confirmed (owner, 2026-10-19) |
 | F14 | **Centre first.** The tissue centre must align as precisely as possible; errors may grow towards the boundary, where they matter less, but are minimised everywhere (see `docs/decisions/0004-centre-first-best-effort-registration.md`) | Confirmed (owner, 2026-11-04) |
 | F15 | **No stop on a bad pair.** A pair that cannot be aligned reliably does not stop the run: it gets the best possible alignment and is flagged for review | Confirmed (owner, 2026-11-04) |
-| F16 | **Cell detection.** Every nucleus in the tissue is detected in its section, measured (centre, radius, outline, shape, staining, nucleolus visible or not) and classified into configurable types with a probability; doubtful cells are "unclassified". Accuracy is measured against labelled cells and must be good enough to find suspicious cells later | Confirmed (owner, 2026-11-05); types and thresholds Proposed |
+| F16 | **Cell detection.** Every nucleus in the tissue is detected in its section, measured (centre, radius, outline, shape, staining, nucleolus visible or not) and classified by its appearance into configurable classes. **Every cell gets a class** (its most likely one) **and a confidence**; there is no "unclassified" (owner, 2026-11-08). Classes are proposed by automatic grouping of the cells' measured looks and confirmed by experts. Accuracy is measured against labelled cells and must be good enough to find suspicious cells later | Confirmed (owner, 2026-11-05 and 2026-11-08); class list and thresholds Proposed |
 | F17 | **Cells in 3D.** Each cell is shown as a 3D blob centred on its nucleus at its registered position, sized from its measured radius, with colour and shape per type. Types can be shown and hidden; the tissue layer can be faded down to fully transparent, so that only the structures remain visible | Confirmed (owner, 2026-11-05) |
 | F18 | **Traceable cells.** Each cell keeps its measurements, its outline and its position in the source slide, so it can be opened at full resolution (0.22 µm/px) without detecting again | Confirmed (owner, 2026-11-06) |
 | F19 | **One cell, one blob.** A cell cut by several consecutive sections is linked across them into one 3D cell; its size comes from its largest profile | Confirmed (owner, 2026-11-06: all sections scanned, none left out; to be confirmed by the lab) |
@@ -85,7 +85,11 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
     - the density correction for section thickness (Abercrombie);
     - **not done:** invented images or cells between sections; a separate mesh per cell.
 20. **Section thickness stays open** (owner, 2026-11-06). Implementation continues without it; it is added to the configuration when the lab supplies it.
-21. **Terms.**
+21. **Cell classes by appearance** (owner, 2026-11-08, decision 0006):
+    - every cell is classified, with a confidence; nothing is "unclassified";
+    - the class list comes from both an automatic grouping of the measured looks (M7-18) and expert confirmation;
+    - the first labelling round uses the fine list (assumption 12).
+22. **Terms.**
     - *Background* means only the glass outside the tissue (shown transparent, C11).
     - The image volume is the *tissue layer*. Its opacity can be lowered to zero, which makes "the rest of the tissue" transparent. No separate name is needed.
     - *Structures* are detected objects: cells now, vessels and others in M8.
@@ -104,9 +108,9 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 9. Feature detector: SIFT from OpenCV (rotation- and scale-invariant; already a dependency). ORB is compared in the spike; AKAZE is not available in the installed OpenCV 5.0 build. (Proposed)
 10. **Cell detection resolution:** cells are detected at the 2x level (0.44 µm/px); the spike (M7-01) checks 1x and 4x. (Proposed)
 11. **What a cell is in this stain:** the nucleus, which is the clearly visible circle; neuron bodies are faint. (Proposed, question Q10)
-12. **Starting cell types** (Proposed, question Q9):
-    - neuron, glia, vessel-wall cell and unclassified;
-    - suspicious types later (M9);
+12. **Starting appearance classes** (owner, 2026-11-08, for the first labelling round until Q9 is answered; may change after M7-18):
+    - neuron, astrocyte-like, oligodendrocyte-like, microglia-like, vessel-wall cell, other;
+    - suspicious classes later (M9): dysmorphic neuron, balloon cell;
     - all in a configurable type table.
 13. **Blob shape:** a sphere with the cell's radius. Types differ by colour and optionally by a fixed proportion, as axis-aligned ellipsoids. Shapes turned like the 2D outline would need meshes and are not planned. (Proposed, question Q26)
 14. **Accuracy gates** on held-out labelled crops: detection F1 ≥ 0.90 and median radius error ≤ 15%; targets per type are set after the spike. (Proposed, question Q18)

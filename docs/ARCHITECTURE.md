@@ -199,7 +199,12 @@ cells_report(work, ids, cfg) -> dict                     # M7-16: counts and den
 # detect                             # M7, Proposed; names and fields fixed in M7-00 (C13, C14)
 detect_nuclei(rgb: ndarray, mask: ndarray, um_per_px: float, cfg) -> Profiles   # one tile;
     # centres, radii (equivalent area), outlines, measurements (shape, staining, nucleolus) in µm
-classify(profiles: Profiles, model) -> Profiles          # type id and probability; "unclassified" if doubtful
+classify(profiles: Profiles, model) -> Profiles          # class id, all class probabilities, confidence (decision 0006)
+# implemented (M7-02): detect/labels.py - Crop, Labels, CLASSES, candidate_centres, assign_split,
+#   crops_geojson, save_crops/load_crops, read_qupath(geojson, slice_id, mpp, crops, classes),
+#   load_labels(dir, crops, classes, mpp); detect/evaluate.py - Detections,
+#   match(truth_xy, det_xy, det_r, tol_um=3, rel=0.5) and
+#   evaluate(crops, labels, detections, classes, tol_um, rel, border_um=3) -> scores per split
 run_detect(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=False) -> StageResult
     # C7; resumes per slice (like preprocess); tiles at 2x with overlap, a profile belongs to the tile
     # holding its centre; nothing outside the mask; writes cells/{id}.npz and cells/{id}.json
@@ -392,7 +397,7 @@ Drafts from decision 0005. Field names, file layouts and thresholds are fixed, w
   - **shape:** area, outline (simplified polygon), eccentricity, solidity;
   - **staining:** mean and spread of the hematoxylin channel, texture;
   - **nucleolus:** visible or not;
-  - **classification:** detection confidence, type id (C14) and type probability.
+  - **classification:** detection confidence, class id (C14), the probability of every class, and the confidence (top probability).
 - **`cells/{id}.json`:** `{"schema": "brainrec.cells/1", "slice_id", "source", "downsample", "mpp_um", "method", "version", "n_profiles"}`.
 - **Rules:**
   - tiles overlap by more than the largest nucleus;
@@ -401,8 +406,8 @@ Drafts from decision 0005. Field names, file layouts and thresholds are fixed, w
 
 **C14 Type table (config).**
 - **Entry fields:** a list of `{id, name, colour, proportions [rx, ry, rz], min_radius_um, max_radius_um}`.
-- **Ids:** stable; id 0 = unclassified.
-- **Proposed start:** neuron, glia, vessel-wall cell (question Q9). Suspicious types are added in M9.
+- **Ids:** stable. There is no "unclassified" (decision 0006); "other" is a class for cells that fit none of the listed looks.
+- **Start (owner, 2026-11-08):** neuron, astrocyte-like, oligodendrocyte-like, microglia-like, vessel-wall cell, other. The list may change after M7-18 and Q9. Suspicious classes are added in M9.
 
 **C15 Local alignment and links (per pair, keyed by the moving slice k, as C5).**
 - **`cells/pair_{k}.npz`** holds:
@@ -500,6 +505,7 @@ Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
     cells/{id}.npz  cells/{id}.json  cells/pair_{k}.npz          (M7, C13, C15)
     cells/layer_<type>/  cells/table.csv  cells/qupath/{id}.geojson   (M7, C17, C18)
     density.zarr  qc/cells_report.json                           (M7, C18)
+    labels/crops.json  labels/qupath/<slide>.geojson  labels/annotations/<slide>.geojson   (M7-02)
 ```
 
 ## 8. Risks and limitations

@@ -69,7 +69,8 @@ Conventions that apply to every task (not repeated below):
 | M6-03 | Scale-up plan (planning only) | docs | Low | To do | M5-06 |
 | M6-04 | Owner sign-off | review | Low | To do | M6-01, M6-02, M6-03 |
 | M7-01 | **Real-data spike: detection, recurrence of nuclei, viewer load (first M7 task)** | integration | High | Done | M3-11 |
-| M7-02 | Labelled cells and evaluation | detect | Medium | To do | M7-01 |
+| M7-02 | Labelled cells and evaluation | detect | Medium | Done | M7-01 |
+| M7-18 | Appearance groups for the class list (added 2026-11-08) | detect | Medium | To do | M7-02 |
 | M7-00 | Cell contracts (C13 to C18) | docs | Low | To do | M7-01 |
 | M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | To do | M7-00, M3-02 |
 | M7-04 | Work-dir layout and cell file I/O | store | Low | To do | M7-00, M3-01 |
@@ -78,8 +79,8 @@ Conventions that apply to every task (not repeated below):
 | M7-07 | 3D placement, cell layers and `cells` stage | cells | High | To do | M7-06 |
 | M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | To do | M7-07 |
 | M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | To do | M7-08 |
-| M7-10 | Detection accuracy | detect | Medium | To do | M7-02 (+ labels), M7-09 |
-| M7-11 | Cell types | detect | High | To do | M7-10 |
+| M7-10 | Detection accuracy | detect | Medium | To do | M7-02, M7-18 (+ labels), M7-09 |
+| M7-11 | Cell classes by appearance | detect | High | To do | M7-10 |
 | M7-12 | Local alignment at cell scale | cells | High | To do | M7-07, M7-03 |
 | M7-13 | Linking profiles into 3D cells | cells | High | To do | M7-12 |
 | M7-14 | Cell table and QuPath export | cells | Low | To do | M7-13 |
@@ -98,7 +99,7 @@ Conventions that apply to every task (not repeated below):
 - After M3-00: M3-01 (layout), M3-02 (synthetic generator) and M3-05 (transform model) do not depend on each other; M3-04 (mask) → M3-03 (registration image) can follow independently of M3-07.
 - After M3-05: M3-09 (volume with transforms), M4-01 and M4-02 (QC score and overlay) can be built and tested on synthetic data while M3-07 is in progress.
 - M3-12 (transparent background) needs only M3-09.
-- M7 (after M7-00): M7-04 (layout) is independent of M7-03 (synthetic data); M7-08 (viewer), M7-16 (detection QC) and M7-14/M7-15 (exports, density) are off the critical path. The labelling branch M7-02 → owner labels → M7-10 → M7-11 runs beside M7-03 to M7-13.
+- M7 (after M7-00): M7-04 (layout) is independent of M7-03 (synthetic data); M7-08 (viewer), M7-16 (detection QC) and M7-14/M7-15 (exports, density) are off the critical path. The labelling branch M7-02 → M7-18 (class list) → owner labels → M7-10 → M7-11 runs beside M7-03 to M7-13.
 
 **Sequential (critical path):**
 M3-06 (spike) → M3-00 (contracts) → M3-05 → M3-07 → M3-08 → M3-10 → M3-11 → M4-04 → M4-05 → **M7-01 → M7-00 → M7-03 → M7-05 → M7-06 → M7-07 → M7-09 → M7-12 → M7-13 → M7-17** → M5-01 → M5-02 → M5-06 → M6-01/02/03 → M6-04 (M7 inserted on 2026-11-06, decision 0005).
@@ -152,7 +153,7 @@ flowchart TD
     M4-04 --> M7-06
     M7-07 --> M7-12
     M7-03 --> M7-12 --> M7-13
-    M7-02 --> M7-10
+    M7-02 --> M7-18 --> M7-10
     M7-09 --> M7-10 --> M7-11
     M7-13 --> M7-14
     M7-13 --> M7-15
@@ -859,22 +860,57 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
     4. **Blur:** a sharpness score per tile; blurred tiles are flagged, and their cells marked as uncertain.
     5. **Linking is needed:** the data supports adjacent sections. M7-12 needs a smooth local field with larger context, not one correlation per window.
     6. **Viewer:** 4.19 million test ellipsoids in 3 sharded layers (6 index levels, 8 files per layer) work in the browser: smooth 2D and 3D, toggling, colours, the confidence slider, clicking a cell, and fading the tissue to opacity 0. No problems seen (owner, 2026-11-07). The prototype writer is the starting point of M7-07b.
-  - **Owner review (2026-11-07):** passed; all proposals approved. Labelled cells and evaluation · Medium · To do
-- **Objective:** ground truth to measure accuracy (AC10).
+  - **Owner review (2026-11-07):** passed; all proposals approved.
+
+#### M7-02 Labelled cells and evaluation · Medium · Done
+- **Objective:** ground truth to measure detection and classification accuracy (AC10).
 - **Outputs:**
-  - 15 to 20 crops of 250 × 250 µm from several slices and regions (cortex, white matter, lesion if known), with a fixed split into training and test crops by crop;
-  - a one-page labelling guide `docs/LABELLING.md` (QuPath: a point per cell with its type, a diameter on a subset);
-  - `detect/evaluate.py`:
-    - reads QuPath exports;
-    - matches detections to labels one-to-one within max(3 µm, half the radius);
-    - reports precision, recall, F1, centre and radius error, and a confusion table per type.
+  - 20 crops of 250 × 250 µm from 10 slices across the block, sharp and deep inside the tissue, with a fixed split into training and test crops by crop (test crops spread over the block);
+  - the crop rectangles as QuPath annotations per slide, so labelling happens on the original slide at full resolution;
+  - a labelling guide `docs/LABELLING.md`:
+    - QuPath: a point per cell inside each rectangle with its appearance class (changed 2026-11-08, decision 0006: neuron, astrocyte-like, oligodendrocyte-like, microglia-like, vessel-wall cell, other; the labeller always picks the most likely class);
+    - an outline on about 10 nuclei per class, for the size;
+    - extra points for rare classes may be placed outside the rectangles (classification only);
+  - `detect/labels.py` (crop choice, split, QuPath rectangles, QuPath import) and `detect/evaluate.py`:
+    - matches detections to labels one-to-one within max(3 µm, half the detected radius);
+    - reports precision, recall, F1, centre and radius error, and a confusion table per class, per split.
 - **Subtasks:** M7-02a crops and labelling guide; M7-02b QuPath import; M7-02c matching and scores.
-- **Depends on:** M7-01 (crop size, level); answers Q9, Q16, Q17.
-- **Files:** `scripts/make_label_crops.py`, `src/brainrec/detect/evaluate.py`, `docs/LABELLING.md`.
+- **Depends on:** M7-01 (crop size, level). Q16 and Q17 refine who labels and how; Q9 may change the class list (M7-18 first).
+- **Files:** `scripts/make_label_crops.py`, `src/brainrec/detect/__init__.py`, `labels.py`, `evaluate.py`, `docs/LABELLING.md`.
 - **Acceptance:**
   - evaluation gives the known scores on synthetic label sets;
   - the owner has the crops and the guide.
-- **Tests:** `tests/unit/test_evaluate.py`, covering perfect detections, shifted, missing and extra detections, and type confusion.
+- **Tests:** `tests/unit/test_labels.py`, `tests/unit/test_evaluate.py`, covering perfect detections, shifted, missing and extra detections, class confusion, the border rule, the QuPath import and the crop choice.
+- **Result (2026-11-08):**
+  - **Code:**
+    - `src/brainrec/detect/labels.py`: `Crop`, `Labels`, `CLASSES` (the six appearance classes), `candidate_centres`, `far_enough`, `assign_split`, `crops_geojson`, `save_crops`/`load_crops` (`brainrec.labelcrops/1`), `read_qupath`, `load_labels`.
+    - **QuPath import:** points, multipoints and outlines are read in µm (QuPath pixel × level-0 pixel size, C1). Outlines give the equivalent-area radius. Crop squares are skipped. Class names are matched ignoring case. Points outside every crop are kept as extra examples (crop −1).
+    - **Labelling slips are errors, never dropped silently:** unknown classes (named, with counts), points without a class, unsupported geometries.
+    - `src/brainrec/detect/evaluate.py`: `match`, the one-to-one Hungarian assignment within max(3 µm, 0.5 × detected radius); `Detections`; `evaluate`, with scores per split and per crop.
+    - **Border rule:** unmatched labels or detections within 3 µm of the crop edge don't count.
+    - **Class scores:** confusion table (rows labelled, columns detected), accuracy, macro F1, and precision/recall/F1 per class.
+  - **Script:** `scripts/make_label_crops.py` chose 20 sharp crops (focus 111 to 350) on slices 1, 15, 30, 45, 60, 75, 90, 105, 120 and 140, 2 per slice, at least 0.3 mm inside the tissue and 1 mm apart.
+    - **Split:** 6 test crops, one each on slices 1, 30, 60, 75, 105 and 140; the split is hidden from the labeller.
+    - **Output:** `labels/crops.json`, one rectangle file per slide in `labels/qupath/`, `labels/crops_overview.jpg`, and an empty `labels/annotations/` (work dir).
+    - **Safety:** it refuses to replace an existing crop set, since labels may refer to it.
+    - **The crops cover** grey matter with pyramidal neurons, pale fibre-rich areas, vacuolated tissue and cell-dense areas.
+  - **Guide:** `docs/LABELLING.md` (classes with their appearance in this stain, rules, QuPath steps, export names). Labelling starts after M7-18 has confirmed the class list.
+  - **Tests:** 24 (12 + 12); full suite 301 passed; ruff and mypy clean.
+    - **Corrections during the task:** one code bug fixed (F1 was undefined instead of 0 when nothing matched). Two errors in my own test data fixed: the half-pixel offset of pixel centres, and a class list that did not hold the swap it described.
+    - **Mutation check:** 13 deliberate faults. 12 were caught at once. A transposed confusion table first slipped through because the test case was symmetric; the test is now asymmetric and catches it.
+
+#### M7-18 Appearance groups for the class list · Medium · To do
+- **Objective:** let the cells' measured looks propose the classes before anyone labels (owner, 2026-11-08, decision 0006).
+- **Method:**
+  - detect nuclei (InstanSeg, 2x) on the label crops and on further crops across the block;
+  - measure each cell's looks (nucleus size, shape, darkness and texture; nucleolus; stained cell body around the nucleus; halo; position next to a vessel);
+  - group the cells automatically (clustering on the standardised measurements, number of groups chosen by a stability criterion);
+  - show a gallery of example cells per group, with its typical measurements.
+- **Outputs:** a gallery and a short report in the work dir `spike/M7-18/`.
+- **Decision:** the owner (and the supervisor, Q9) confirms or adjusts the class list in `docs/LABELLING.md`; only then the labelling starts.
+- **Depends on:** M7-02. **Files:** `scripts/appearance_groups.py` (throwaway), `docs/LABELLING.md` (class list).
+- **Acceptance:** the owner has seen the galleries and fixed the class list.
+- **Note:** may need scikit-learn for clustering (covered by the owner's permission for detection tools, 2026-11-07; to be confirmed).
 
 ### Component: docs
 
@@ -1017,13 +1053,13 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-02 and the owner's labels, M7-09. **Files:** `src/brainrec/detect/nuclei.py` (parameters), the evaluation report in `docs/REQUIREMENTS.md` section 7.
 - **Acceptance:** F1 and radius error at or above the agreed gates, or the gap reported plainly with its causes.
 
-#### M7-11 Cell types · High · To do
-- **Objective:** types with a probability (F16).
+#### M7-11 Cell classes by appearance · High · To do
+- **Objective:** every cell gets an appearance class and a confidence (F16; changed 2026-11-08, decision 0006: no "unclassified").
 - **Subtasks:**
-  - **M7-11a** features per profile;
-  - **M7-11b** classifier (scikit-learn if permitted, Q19);
-  - **M7-11c** "unclassified" threshold;
-  - **M7-11d** colours and proportions per type in the layers;
+  - **M7-11a** features per profile (the measurements of M7-18, plus image patches if a learned classifier is better);
+  - **M7-11b** classifier trained on the labels (measurement-based, and a patch-based network for comparison);
+  - **M7-11c** class probabilities for all classes and the confidence (top probability) per cell; low-confidence cells listed for review;
+  - **M7-11d** colours and proportions per class in the layers; a confidence slider per layer;
   - **M7-11e** confusion table on the test crops.
 - **Depends on:** M7-10. **Files:** `src/brainrec/detect/classify.py`.
 - **Acceptance:** AC10 for types (targets set after M7-01).

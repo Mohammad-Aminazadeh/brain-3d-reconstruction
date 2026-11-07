@@ -26,7 +26,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 - Resumable, per-slice batch processing through a CLI.
 - **Cells in 3D (M7):**
   - nucleus detection with measured accuracy;
-  - cell types with a probability;
+  - every cell classified by its appearance, with a confidence (classes proposed by automatic grouping, confirmed by experts);
   - one blob per cell, linked across sections;
   - one viewer layer per type, with the tissue layer fadeable to transparent;
   - cell table with CSV and QuPath export;
@@ -36,7 +36,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 ## Current development status
 
-**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike done (2026-11-07). Next task: M7-02 labelled cells and evaluation.**
+**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). Next task: M7-18 appearance groups, which fix the class list before labelling.**
 
 | Item | Status |
 |---|---|
@@ -87,10 +87,11 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): components, data flow, interfaces and technology choices.
 - [CLAUDE.md](CLAUDE.md): rules for AI-assisted development in this repository.
 - [docs/MVP.md](docs/MVP.md): MVP scope, acceptance criteria and milestones.
+- [docs/LABELLING.md](docs/LABELLING.md): guide for labelling cells in QuPath (M7-02).
 - [tasks/BACKLOG.md](tasks/BACKLOG.md): work breakdown with task status.
 - [tasks/IMPLEMENTATION_PLAN.md](tasks/IMPLEMENTATION_PLAN.md): order of implementation, critical path, contracts.
 - [results/](results/README.md): result figures for presentations (compressed copies; originals on the work drive).
-- [docs/decisions/](docs/decisions/): decision records (storage format, local viewer, tissue-only feature-based registration, centre-first alignment, cells in 3D).
+- [docs/decisions/](docs/decisions/): decision records (storage format, local viewer, tissue-only feature-based registration, centre-first alignment, cells in 3D, cell classes by appearance).
 
 ## Data
 
