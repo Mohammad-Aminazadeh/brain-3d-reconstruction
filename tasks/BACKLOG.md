@@ -56,7 +56,8 @@ Conventions that apply to every task (not repeated below):
 | M4-02 | Overlay image | qc | Low | Done | M3-05 |
 | M4-03 | QC report and flags | qc | Low | Done | M4-01, M4-02, M3-01 |
 | M4-04 | `brainrec qc` command | pipeline | Low | Done | M4-03 |
-| M4-05 | Real QC review, slices 1 to 10 | integration | Medium | To do | M4-04, M3-11 |
+| M4-05 | Real QC review, slices 1 to 10 | integration | Medium | Done | M4-04, M3-11 |
+| M4-06 | QC peak check (catches errors of 100 to 200 µm) | qc | Medium | To do | M4-05 |
 | M5-01 | Stage runner with resume (incl. `detect`, `cells`) | pipeline | Medium | To do | M3-10, M4-04, M7-06, M7-13 |
 | M5-02 | `brainrec run` and `brainrec status` | pipeline | Medium | To do | M5-01 |
 | M5-03 | Disk-space preflight | pipeline | Low | To do | M2-04 |
@@ -672,12 +673,50 @@ Two owner requirements shape this milestone (`docs/decisions/0003-tissue-only-fe
 
 ### Component: integration
 
-#### M4-05 Real QC review, slices 1 to 10 · Medium · To do
+#### M4-05 Real QC review, slices 1 to 10 · Medium · Done
 - **Objective:** AC5 on real data; calibrate thresholds.
 - **Outputs:** QC report for 9 pairs; chosen thresholds in the example config; owner's verdict per flagged pair.
 - **Depends on:** M4-04, M3-11.
 - **Acceptance:** owner confirms the overlays of unflagged pairs look aligned.
 - **Tests:** owner review.
+- **Work (2026-11-07):**
+  - **Calibration** (read only, `docs/REQUIREMENTS.md` section 7):
+    - every real pair was re-scored with its transform deliberately shifted (25 to 400 µm) or rotated (0.5° to 5°);
+    - NCC falls smoothly with the error, but differs more between pairs (0.35 to 0.75) than a 200 µm error changes it;
+    - Dice hardly reacts (−0.01 to −0.03 at 400 µm) and mainly shows damaged margins.
+  - **Thresholds (Proposed):**
+    - `qc_min_ncc` 0.40 and `qc_min_dice` 0.93, as defaults in `catalog/config.py` and listed in `config/project.example.yaml`;
+    - both lie in the gap between the damaged pairs and the rest;
+    - together they catch a 5° rotation in every pair and a 400 µm shift in pairs 1 to 5, not errors of 100 to 200 µm.
+  - **Tests** whose expected values were the old defaults were updated (`test_config`, `test_qc_report`); the CLI qc test now sets its thresholds explicitly. Full suite afterwards: 277 passed; ruff and mypy clean.
+  - **Real run:** `brainrec qc --slices 1-10` (thresholds re-evaluated, 0 pairs recomputed). Flagged: **4→5** (NCC 0.346, Dice 0.904) and **5→6** (NCC 0.377, Dice 0.919). The other 7 pairs pass.
+  - **Visual check:**
+    - all 9 overlays are grey in the interior: ventricles, central boundary and curved band line up;
+    - the coloured areas are torn, folded or missing tissue at the margins, largest in 4→5 (left and top margins) and 5→6 (top margin);
+    - figure: `results/M4-05_qc_review/contact_sheet.jpg`.
+  - **Owner review (2026-11-07): passed (AC5).**
+    - Results acceptable; the 7 unflagged pairs look aligned.
+    - Flagged pairs 4→5 and 5→6 accepted: their interiors align; the damaged margins are left to the non-rigid refinement (M8).
+    - Thresholds 0.40 and 0.93 approved for now.
+    - The owner asked for the peak check (new task M4-06).
+
+### Component: qc (added 2026-11-07)
+
+#### M4-06 QC peak check · Medium · To do
+- **Objective:** flag pairs whose alignment is off by 100 to 200 µm, which absolute thresholds cannot see (M4-05 calibration).
+- **Method:**
+  - re-score each pair with its transform shifted by about 100 µm (4 directions) and rotated by about 1° each way about the tissue centre;
+  - flag the pair if a neighbouring alignment scores clearly better than the registered one (margin Proposed 0.02; damaged pairs reach +0.012).
+- **Outputs:**
+  - per pair: the best neighbouring NCC and its offset;
+  - a new field in the QC report (C10 change, explained before it is made);
+  - a new threshold field in the config.
+- **Depends on:** M4-05. **Files:** `src/brainrec/qc/metrics.py`, `report.py`, `stage.py`, `src/brainrec/catalog/config.py`.
+- **Acceptance:**
+  - synthetic: a pair misaligned by 100 µm is flagged, a correct one is not;
+  - real slices 1 to 10: no pair flagged by the peak check alone (all reviewed as aligned).
+- **Tests:** `tests/unit/test_qc_metrics.py`, `test_qc_report.py`, `test_qc_stage.py`.
+- **Order:** owner's request (2026-11-07); after M7-01, as a fill-in while M7 waits for owner decisions.
 
 ---
 

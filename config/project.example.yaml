@@ -3,3 +3,7 @@ work_dir: "/Volumes/My Passport/3D Brain Reconstruction"
 z_spacing_um: 5.0   # PLACEHOLDER: real section spacing unknown; only affects Z proportions
 base_downsample: 4  # 4 = 0.88 um/px
 n_levels: 5
+# QC thresholds (M4-05, approved for now; these are the defaults): a pair is flagged when a score is below
+# its threshold; null = not checked
+qc_min_ncc: 0.40
+qc_min_dice: 0.93

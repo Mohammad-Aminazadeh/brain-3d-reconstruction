@@ -103,7 +103,7 @@ The MVP is accepted when all hold, each checked by a command or test that was ac
 | M1 | Data characterisation | Owner chose the base level (4x) | Done |
 | M2 | Unregistered vertical slice (10 slices, no registration) | Volume opens in Neuroglancer (R6) | Done |
 | M3 | Registration (feature-based, tissue only) | Synthetic tests pass (AC4, AC9 part); real result reviewed (R5, R7, R9, R10) | Done (2026-11-03) |
-| M4 | Quality control | Owner can see which pairs are doubtful (AC5) | In progress |
+| M4 | Quality control | Owner can see which pairs are doubtful (AC5) | Done (2026-11-07; peak check M4-06 added) |
 | M7 | Cells in 3D (decision 0005) | AC10 to AC14 | To do |
 | M5 | Integration: `brainrec run` end to end | AC1, AC2, AC3, AC6 | To do |
 | M6 | MVP review | All AC met; owner sign-off | To do |

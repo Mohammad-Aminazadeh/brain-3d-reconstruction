@@ -22,6 +22,15 @@ Real-data spike on slices 1 to 10 at 32x (about 7 µm/px), made with `scripts/sp
 |---|---|
 | `mask_contact_sheet.jpg` | Slices 1 to 10 with the final tissue masks of M3-04 (chroma threshold with hysteresis; detached fragments kept; scanner edge and debris excluded). Checked and approved by the owner. |
 
+## M4-05_qc_review (2026-11-07)
+
+QC of the registered slices 1 to 10 (`brainrec qc --slices 1-10`) with the calibrated thresholds (NCC ≥ 0.40, Dice ≥ 0.93, Proposed). Calibration and verdicts: `tasks/BACKLOG.md`, M4-05; `docs/REQUIREMENTS.md` section 7.
+
+| File | Shows |
+|---|---|
+| `contact_sheet.jpg` | The 9 QC overlays (registration level, 32x, about 7 µm/px, shown at about a quarter of their size) with NCC, Dice and flag. Interiors are grey in every pair; coloured areas are torn, folded or missing tissue at the margins. Flagged: 4→5 and 5→6, the damaged pairs. Full-size overlays: `qc/overlay_<k>.png` in the work directory. |
+| `calibration.json` | NCC and Dice of every pair when its registered transform is deliberately shifted (25 to 400 µm, mean and maximum over 4 directions) or rotated about the tissue centre (0.5° to 5°). |
+
 ## M3-11_registered_volume (2026-11-03)
 
 Taken from the registered, tissue-only volume of slices 1 to 10 (`brainrec volume --slices 1-10`), pyramid level 4 (64x of the scan, about 14 µm/px), so they show exactly what the viewer stacks in z. Match quality per pair: `tasks/BACKLOG.md`, M3-11.

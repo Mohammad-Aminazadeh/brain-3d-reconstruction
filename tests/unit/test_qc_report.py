@@ -46,7 +46,7 @@ def test_every_consecutive_pair_in_order(tmp_path):
 
 def test_thresholds_are_recorded(tmp_path):
     report = build_report(WorkDir(tmp_path), [1, 2], _pairs([1, 2]), _cfg(qc_min_ncc=0.35))
-    assert report["thresholds"] == {"qc_min_ncc": 0.35, "qc_min_dice": 0.90}
+    assert report["thresholds"] == {"qc_min_ncc": 0.35, "qc_min_dice": 0.93}
 
 
 @pytest.mark.parametrize(

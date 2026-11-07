@@ -241,6 +241,30 @@ Outputs (moved on 2026-10-20 for presentation) in `/Volumes/My Passport/3D Brain
   - **Undamaged areas:** the inlier residual is about 17 µm, roughly 2.5 registration pixels or 20 base pixels at 0.88 µm/px. That is structure-level alignment: vessels and layers line up, individual cells do not. (Whether single nuclei recur in the next section was measured later, see below.)
   - **Damaged areas:** at folds, tears and compressed margins (slices 4 and 5), edges stay off by hundreds of µm after any global transform. The best mask overlap after guided matching is 0.84 for pairs 4→5 and 5→6, against 0.93 to 0.98 for undamaged pairs. Fixing this needs non-rigid registration (post-MVP).
 
+### QC calibration (M4-05, 2026-11-07, read only, slices 1 to 10)
+
+How much do the QC scores drop when a registered pair is deliberately misaligned? Each pair's transform was shifted (25 to 400 µm, 4 directions) or rotated about the tissue centre (0.5° to 5°, both ways) and scored like QC (centre-weighted NCC, Dice). Script in the session scratchpad; numbers in `results/M4-05_qc_review/calibration.json`.
+
+| Pair | NCC registered | shifted 200 µm | shifted 400 µm | rotated 5° | Dice registered | Dice shifted 400 µm | Dice rotated 5° |
+|---|---|---|---|---|---|---|---|
+| 1→2 | 0.475 | 0.413 | 0.346 | 0.307 | 0.981 | 0.963 | 0.940 |
+| 2→3 | 0.536 | 0.457 | 0.364 | 0.342 | 0.964 | 0.950 | 0.933 |
+| 3→4 | 0.451 | 0.418 | 0.363 | 0.357 | 0.944 | 0.934 | 0.922 |
+| 4→5 | 0.346 | 0.312 | 0.270 | 0.270 | 0.904 | 0.896 | 0.887 |
+| 5→6 | 0.377 | 0.348 | 0.281 | 0.294 | 0.919 | 0.913 | 0.908 |
+| 6→7 | 0.724 | 0.530 | 0.411 | 0.394 | 0.977 | 0.951 | 0.924 |
+| 7→8 | 0.682 | 0.549 | 0.431 | 0.410 | 0.976 | 0.953 | 0.926 |
+| 8→9 | 0.754 | 0.551 | 0.430 | 0.399 | 0.981 | 0.959 | 0.935 |
+| 9→10 | 0.714 | 0.544 | 0.423 | 0.392 | 0.980 | 0.960 | 0.936 |
+
+(Means over the directions; maxima in the JSON.)
+
+- **NCC falls smoothly with the error, but its level differs between pairs** (0.35 to 0.75), more than a 200 µm error changes it. A correctly aligned damaged pair (4→5: 0.346) scores like a good pair 400 µm off (1→2: 0.346). An absolute threshold therefore finds damaged pairs and large errors, not errors of 100 to 200 µm.
+- **Dice hardly reacts to misalignment** (−0.01 to −0.03 at 400 µm); it measures torn, folded or missing margins, and rotations of about 5°.
+- **Damaged pairs have a flat optimum:** for 3→4, 4→5 and 5→6 a shift of 100 µm or a rotation of 1° in one direction scores up to 0.012 higher than the feature-based result. For the undamaged pairs the registered transform is the clear maximum.
+- **Chosen (approved by the owner for now, 2026-11-07):** `qc_min_ncc` 0.40 and `qc_min_dice` 0.93. Both lie in the gap between the damaged pairs 4→5, 5→6 (flagged) and the rest. Together they catch a 5° rotation in every pair, a 400 µm shift in pairs 1 to 5, and the gross failures seen so far (the −12.7° drift of pair 4→5 in M3-08 had NCC 0.246).
+- **Visual check of the 9 overlays:** interiors (ventricles, central boundary, curved band) are grey in every pair; the coloured areas are torn, folded or missing tissue at the margins, largest in 4→5 and 5→6.
+
 ### Same cells in neighbouring sections? (2026-11-05, read only, slices 1 to 10)
 
 Question: does a cell continue from one image into the next? Script in the session scratchpad (not in the repository), outputs only there; sources read at the 2x level (0.44 µm/px).

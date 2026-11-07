@@ -266,7 +266,7 @@ def test_failed_pair_is_reported_but_does_not_stop(tmp_path, monkeypatch, capsys
 
 
 def test_qc_lists_pairs_and_flags(tmp_path, monkeypatch, capsys):
-    cfg = _synthetic(tmp_path, monkeypatch)
+    cfg = _synthetic(tmp_path, monkeypatch, qc_min_ncc=None, qc_min_dice=0.9)
     work = WorkDir(tmp_path / "work")
     _run(cfg, "preprocess", "--slices", "1-2")
     _run(cfg, "register", "--slices", "1-2")
@@ -287,7 +287,9 @@ def test_qc_lists_pairs_and_flags(tmp_path, monkeypatch, capsys):
     assert work.qc_overlay(2).exists()
 
     # stricter thresholds: the pair is flagged without being scored again
-    strict = _write_config(tmp_path, tmp_path / "data", base_downsample=32, qc_min_ncc=0.999)
+    strict = _write_config(
+        tmp_path, tmp_path / "data", base_downsample=32, qc_min_ncc=0.999, qc_min_dice=0.9
+    )
     _run(strict, "qc", "--slices", "1-2")
     out = capsys.readouterr().out.splitlines()
     assert out[1].endswith("  FLAGGED")

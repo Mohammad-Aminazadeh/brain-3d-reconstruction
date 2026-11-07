@@ -8,7 +8,8 @@ Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06)
 - **Done:**
   - M0 (except CI), M1, M2, M3;
   - M4-01 to M4-04 (pair score, overlay, QC report, `brainrec qc`; M4-04 done 2026-11-06).
-- **Next:** M4-05 (owner's QC review and thresholds).
+- **M4-05 done (2026-11-07):** owner accepted the QC; M4 closed. Peak check added as M4-06.
+- **Next:** M7-01 (owner permitted installing deep-learning detectors, 2026-11-07).
 - **New goal (owner, 2026-11-05/06):** cells (later vessels and other structures) as 3D objects inside a volume that can be made transparent. This adds milestone M7 before M5 (section 10).
 - **Prerequisites:** none of the new tasks is needed before M4-04 or M4-05, and no done task has to be redone.
 - **Open inputs:** section thickness (the owner will supply it) and the supervisor's answers (`docs/REQUIREMENTS.md` section 6.2).
@@ -310,8 +311,9 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 | Step | Task | Gate |
 |---|---|---|
 | 1 | **M4-04** `brainrec qc` command (done 2026-11-06) | Tests |
-| 2 | **M4-05** Real QC review, slices 1 to 10 (closes M4) | Owner |
+| 2 | **M4-05** Real QC review, slices 1 to 10 (done 2026-11-07, closes M4) | Owner |
 | 3 | **M7-01** Real-data spike: detector, nucleolus, recurrence after cell-scale alignment, viewer load | Owner decisions |
+| 3b | M4-06 QC peak check (owner's request, 2026-11-07; fill-in while M7 waits for decisions) | Tests |
 | 4 | **M7-02** Labelled cells and evaluation (the owner then labels in parallel) | Labels delivered |
 | 5 | **M7-00** Cell contracts C13 to C18 | Owner approval |
 | 6 | M7-03 synthetic nuclei and 3D cells; M7-04 layout and cell files | Tests |

@@ -36,7 +36,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 ## Current development status
 
-**Phase: M4 quality control in progress (M3 done: registered, tissue-only volume of slices 1 to 10, reviewed by the owner). New goal since 2026-11-06: cells in 3D (milestone M7, after M4, before M5). Next task: M4-05 real QC review (owner).**
+**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). Current task: M7-01 real-data spike for cell detection.**
 
 | Item | Status |
 |---|---|
@@ -48,7 +48,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 | M1 data characterisation | Done (see docs/REQUIREMENTS.md section 7) |
 | M2 unregistered volume | Done: slices 1 to 10 (19.5 GB, 11.5 min), checked in Neuroglancer |
 | M3 registration | Done (2026-11-03): spike (M3-06), contracts (M3-00), transform model (M3-05), synthetic data (M3-02), pairwise registration (M3-07), work-dir layout (M3-01), tissue mask (M3-04), preprocessing stage (M3-03), register stage (M3-08), registered volume builder (M3-09), interim CLI (M3-10), transparent background (M3-12) and centre-first alignment with best effort for failed pairs (M3-13) done; real registered volume of slices 1 to 10 (M3-11, 12 min, 15.4 GB) reviewed by the owner; feature-based, tissue-only, similarity (see [docs/decisions/0003](docs/decisions/0003-tissue-only-feature-based-registration.md)) |
-| M4 quality control | In progress: pair score (M4-01), overlay image (M4-02), QC report with flags (M4-03) and `brainrec qc` (M4-04) done; next: owner's review and thresholds (M4-05) |
+| M4 quality control | In progress: pair score (M4-01), overlay image (M4-02), QC report with flags (M4-03) and `brainrec qc` (M4-04) done; real QC review (M4-05) passed on 2026-11-07: thresholds NCC 0.40 and Dice 0.93, damaged pairs 4→5 and 5→6 flagged and accepted (interiors aligned). Added: peak check (M4-06) |
 | M7 cells in 3D | Planned (2026-11-06, decision 0005): spike, labelled cells, detection, 3D blobs, linking across sections, types, cell table, density maps. Open questions for the supervisor: [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) section 6.2; section thickness still unknown |
 
 ## Usage (current)

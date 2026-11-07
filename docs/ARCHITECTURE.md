@@ -362,8 +362,8 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 | `mask_hysteresis` | 0.75 | to be validated in M3-04 |
 | `mask_min_component_mm2` | 0.25 | spike: fragments 0.6 to 2.8 mm², specks below 0.2 |
 | `volume_mask_margin_um` | 50 | decision 9; `VolumeSpec.mask_margin_um` (M3-09) |
-| `qc_min_dice` | 0.90 | spike masks: flagged the damaged pairs 3→4, 4→5, 5→6; with the M3-04 masks real Dice is 0.904 to 0.981 and 0.90 flags none (M4-01), so it is recalibrated in M4-05 |
-| `qc_min_ncc` | None (not checked) until M4-05 | calibrated on real data; field added in M4-03, as `qc_min_dice` |
+| `qc_min_dice` | 0.93 (approved for now, 2026-11-07) | M4-05: real pairs 0.904 to 0.981; flags the damaged pairs 4→5 and 5→6. Dice hardly reacts to misalignment (a 400 µm shift lowers it by 0.01 to 0.03); it mainly shows torn or missing margins and rotations of about 5° |
+| `qc_min_ncc` | 0.40 (approved for now, 2026-11-07) | M4-05: real pairs 0.346 to 0.754; flags 4→5 and 5→6 (gap 0.377 to 0.451). Catches a 400 µm shift in the weaker pairs 1 to 5 and, with Dice, a 5° rotation in every pair; errors of 100 to 200 µm stay below what an absolute threshold can see |
 
 **C10 QC report.** `qc/report.json`: `{"schema": "brainrec.qc/1", "thresholds", "pairs": [{"fixed", "moving", "status", "n_inliers", "rms_um", "ncc", "dice", "flagged", "overlay"}]}`. `flagged`: status `failed` (M3-13), or a score below its threshold.
 
