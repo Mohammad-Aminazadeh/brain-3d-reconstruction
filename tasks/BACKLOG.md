@@ -68,7 +68,7 @@ Conventions that apply to every task (not repeated below):
 | M6-02 | Acceptance report | docs | Low | To do | M5-06 |
 | M6-03 | Scale-up plan (planning only) | docs | Low | To do | M5-06 |
 | M6-04 | Owner sign-off | review | Low | To do | M6-01, M6-02, M6-03 |
-| M7-01 | **Real-data spike: detection, recurrence of nuclei, viewer load (first M7 task)** | integration | High | To do | M3-11 |
+| M7-01 | **Real-data spike: detection, recurrence of nuclei, viewer load (first M7 task)** | integration | High | Done | M3-11 |
 | M7-02 | Labelled cells and evaluation | detect | Medium | To do | M7-01 |
 | M7-00 | Cell contracts (C13 to C18) | docs | Low | To do | M7-01 |
 | M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | To do | M7-00, M3-02 |
@@ -824,7 +824,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: integration (first)
 
-#### M7-01 Real-data spike: detection, recurrence of nuclei, viewer load · High · To do
+#### M7-01 Real-data spike: detection, recurrence of nuclei, viewer load · High · Done
 - **Objective:** before any library code, learn from real slices:
   - (a) which detector works on this stain, at which level (1x, 2x, 4x), and how fast;
   - (b) whether a nucleolus is visible, and whether the radius rule (equivalent-area circle) is stable;
@@ -848,8 +848,18 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
   - method and reachable accuracy of the local alignment;
   - viewer limits (cells per layer, level of detail).
 - **Out of scope:** library code, unit tests, interface changes.
-
-#### M7-02 Labelled cells and evaluation · Medium · To do
+- **Work (2026-11-07):**
+  - **Installed** (owner's permission): torch 2.15.0, cellpose 4.2.1.1, instanseg-torch 0.1.2, tensorflow 2.21.0, stardist 0.9.2. The .venv is 2.9 GB; numpy and OpenCV are unchanged; 277 tests still pass. Not yet in `pyproject.toml` or `requirements-lock.txt`: the chosen detector goes there in M7-00/M7-05.
+  - **Script:** `scripts/spike_cells.py` with the parts `detect`, `recur` and `viewer` (`viewer --write` writes the test layers, `viewer` serves them).
+  - **Findings:** `docs/REQUIREMENTS.md` section 7, "Cell spike".
+  - **Decisions (approved by the owner, 2026-11-07):**
+    1. **Detector:** no final choice before the labels. InstanSeg at 2x is the working detector (fast, best on pale crops). StarDist stays as the second candidate (finds pale neuron nuclei InstanSeg misses). In M7-10 both are measured on the labelled test crops, fine-tuned on the training crops, and possibly combined. Cellpose 4 is dropped for speed.
+    2. **Level:** detect at 2x. Read 1x patches only around larger nuclei, for the nucleolus flag and exact size.
+    3. **Radius:** equivalent-area circle (consistent between detectors).
+    4. **Blur:** a sharpness score per tile; blurred tiles are flagged, and their cells marked as uncertain.
+    5. **Linking is needed:** the data supports adjacent sections. M7-12 needs a smooth local field with larger context, not one correlation per window.
+    6. **Viewer:** 4.19 million test ellipsoids in 3 sharded layers (6 index levels, 8 files per layer) work in the browser: smooth 2D and 3D, toggling, colours, the confidence slider, clicking a cell, and fading the tissue to opacity 0. No problems seen (owner, 2026-11-07). The prototype writer is the starting point of M7-07b.
+  - **Owner review (2026-11-07):** passed; all proposals approved. Labelled cells and evaluation · Medium · To do
 - **Objective:** ground truth to measure accuracy (AC10).
 - **Outputs:**
   - 15 to 20 crops of 250 × 250 µm from several slices and regions (cortex, white matter, lesion if known), with a fixed split into training and test crops by crop;

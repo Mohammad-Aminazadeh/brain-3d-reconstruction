@@ -42,8 +42,8 @@ class ProjectConfig(BaseModel):
     volume_mask_margin_um: float = 50.0
 
     # quality control (contract C9, C10): a pair is flagged when a score is below its threshold;
-    # None = not checked. Calibrated on real slices 1 to 10 in M4-05 (approved for now, 2026-11-07): both lie in the
-    # gap between the damaged pairs 4->5, 5->6 and the rest. Together they catch a 5° rotation
+    # None = not checked. Calibrated on real slices 1 to 10 in M4-05 (approved for now,
+    # 2026-11-07): both lie in the gap between the damaged pairs 4->5, 5->6 and the rest. Together they catch a 5° rotation
     # error in every pair, a 400 µm shift only in the weaker pairs; errors of 100 to 200 µm change
     # the scores less than the scores differ between pairs.
     qc_min_ncc: float | None = 0.40  # real pairs 0.346 to 0.754

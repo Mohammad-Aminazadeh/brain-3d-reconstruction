@@ -110,7 +110,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
     - all in a configurable type table.
 13. **Blob shape:** a sphere with the cell's radius. Types differ by colour and optionally by a fixed proportion, as axis-aligned ellipsoids. Shapes turned like the 2D outline would need meshes and are not planned. (Proposed, question Q26)
 14. **Accuracy gates** on held-out labelled crops: detection F1 ≥ 0.90 and median radius error ≤ 15%; targets per type are set after the spike. (Proposed, question Q18)
-15. **Detector choice:** a baseline without new dependencies (hematoxylin colour separation, threshold, split of touching nuclei) is compared with pretrained deep-learning detectors (Cellpose, StarDist or InstanSeg). Installing them needs permission. (Proposed, question Q19)
+15. **Detector choice (decided after M7-01, owner 2026-11-07):** InstanSeg at 2x is the working detector, StarDist the second candidate; the final choice, fine-tuning and possibly a combination follow from the labelled test crops (M7-10); Cellpose 4 is dropped for speed; nucleolus and exact size from 1x patches around larger nuclei; a sharpness score per tile marks uncertain cells. *Original proposal:* a baseline without new dependencies (hematoxylin colour separation, threshold, split of touching nuclei) is compared with pretrained deep-learning detectors (Cellpose, StarDist or InstanSeg). Installing them needs permission. (Proposed, question Q19)
 16. **Local alignment for linking** is computed from the detected nuclei (feature-based, on top of the registration), on a grid of windows; target accuracy 1 to 2 µm. Intensity correlation may only initialise or refine it (F13). (Proposed)
 
 ## 6. Open questions
@@ -292,3 +292,46 @@ Question: does a cell continue from one image into the next? Script in the sessi
   - median nucleus diameter about 6 µm (90th percentile 7 to 8.5 µm);
   - roughly 500 to 1000 nuclei/mm² from a simple threshold (probably an undercount), so about 200,000 to 400,000 nucleus profiles per section.
 - **Viewer:** the bundled Neuroglancer (2.41.2) supports ellipsoid annotations with per-cell properties, controls in the layer panel and sharded annotation files. Its Python annotation writer is too limited (one file per annotation, no multi-level spatial index), so the cell layers need an own writer (numpy only).
+
+### Cell spike (M7-01, 2026-11-07, read only, `scripts/spike_cells.py`)
+
+Outputs in the work dir `spike/M7-01/` (figures, `detect.json`, `recur.json`, test cell layers). Sources were only read (levels 0 and 1, crops; the 32x level for masks of slices 70 and 140).
+
+**Detectors** (installed with the owner's permission, 2026-11-07: PyTorch 2.15 with Cellpose 4.2.1 and InstanSeg 0.1.2; TensorFlow 2.21 with StarDist 0.9.2). 12 crops of 250 × 250 µm, at least 0.4 mm inside the tissue, 3 each from slices 1, 5, 70 and 140.
+
+| Detector | Seconds per mm² of tissue (1x / 2x) | Per slice of 400 mm², 2x | Behaviour |
+|---|---|---|---|
+| Baseline (colour separation, threshold, watershed) | 2.0 / 0.6 | about 4 min | Fragments nuclei and texture: up to 700 objects where the others find 50 to 70. Not usable |
+| StarDist `2D_versatile_he` | 3.9 / 4.0 | about 27 min | Finds a large pale neuron nucleus the others miss (slice 1); misses many nuclei in a pale, soft crop (slice 5) |
+| InstanSeg `brightfield_nuclei` | 1.6 / 1.0 | about 7 min | Finds most nuclei in the pale crop, including large pale ones; missed the pale neuron nucleus of slice 1 |
+| Cellpose 4 (`cpsam`, Apple GPU) | 135 / 34 | about 4 h (15 h at 1x) | Misses most nuclei in the pale crop; too slow for 140 slices on this laptop |
+
+- **Agreement between the three deep-learning detectors:** in sharp crops, 0.80 to 0.95 (F1 of one-to-one matching within 3 µm); in the 3 blurred crops (focus score 11 to 56 against 150 to 280), 0.43 to 0.76.
+- **Resolution:** the same detector at 2x (0.44 µm/px) against 1x (0.22) agrees 0.78 to 0.98. 2x is enough for finding nuclei, and has 4 times fewer pixels to read.
+- **Size:** median nucleus diameter 6.1 to 7.6 µm per crop, consistent between detectors (equivalent-area circle).
+- **Accuracy itself is not known yet:** agreement is not correctness. Pale neuron nuclei, the cells that matter most for FCD, are the weak spot of every detector. This needs the labelled crops (M7-02) and probably fine-tuning on them.
+- **Nucleolus:** visible as a dark dot in sharp nuclei at 1x (gallery of the 48 largest nuclei). At 2x a nucleolus is only 2 to 4 pixels, so the nucleolus flag needs 1x patches around the larger nuclei.
+- **Focus varies within slices:** 3 of 12 crops (slices 5 and 140) are clearly out of focus. Detection there is unreliable, so a sharpness score per tile is needed (M7-16).
+- **Stain:** some neurons show a stained cell body around a pale nucleus with a dark nucleolus. This looks like a Nissl-type stain rather than hematoxylin only, which makes question Q6 more important.
+- **Block:** slice 140 has only 67 mm² of tissue (slice 70: 283 mm², slice 1: 397 mm²).
+
+**Recurrence of nuclei in the next section** (pairs 1→2, 6→7, 8→9, and 69→70 registered in memory: `features`, 391 inliers). For each pair, 4 sharp windows of 150 µm at 1x; the next section was warped by the registration, aligned locally by correlation (±100 µm), nuclei were detected (InstanSeg) and fitted to each other. The control is the same procedure 1.5 mm away.
+
+- **Shared nuclei within 1.5 µm, per window:**
+  - 1→2: 5 to 14%;
+  - 6→7: 0 to 16%;
+  - 8→9: 11 to 33%, up to 49% within 2.5 µm;
+  - 69→70: 0 to 12%;
+  - controls: 0 to 12%.
+- **The windows that locked on best** (correlation 0.32 to 0.38, all in 8→9) have the most shared nuclei; windows with correlation 0.1 to 0.2 stay near chance, so their local alignment is most likely wrong. Fitting the nuclei to each other did not improve this.
+- **Model** (spheres 6.5 µm, profiles of radius ≥ 1.6 µm counted):
+  - adjacent sections 3 to 10 µm thick: 36 to 66% of profiles recur;
+  - gaps of 10 µm or more: none;
+  - so the measured values above the control **support adjacent sections** (owner, Q2), with detection misses and leftover deformation lowering them.
+- **Conclusion:** cells continue into the next section, so linking (M7-12, M7-13) is needed. The local alignment must be stronger than a correlation per window (smooth field, larger context, robust fit); this is the main risk of M7.
+
+**Viewer load test:**
+- **Test cells:** 4.19 million in 3 test types (70 / 20 / 10%), at 1000 per mm² inside the tissue masks of slices 1 to 10, placed through the chained transforms in the volume's frame.
+- **Format:** the prototype writer of contract C17 (ellipsoids in µm, 6-level sharded spatial index, sharded by-id index).
+- **Cost:** 13 s to write, 426 MB, 8 files per layer. A test read of the by-id index returns the right cell.
+- **Owner check in the browser (2026-11-07):** works without problems: smooth in 2D and 3D, layers toggle and recolour, the confidence slider filters, a clicked cell shows its properties, and the tissue fades to opacity 0.
