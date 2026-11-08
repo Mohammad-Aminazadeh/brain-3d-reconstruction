@@ -234,13 +234,25 @@ link_profiles(fixed, moving, field: LocalField, cfg) -> Links      # one-to-one,
 build_cells(profiles: dict[int, Profiles], links: dict[int, Links]) -> Cells3D
     # chains of linked profiles; representative = the largest profile
 place_cells(cells: Cells3D, chained: dict[int, Transform2D], spec) -> Placed  # volume frame, µm
+    # implemented for single profiles (M7-07), cells/place.py: VolumeFrame(slice_ids, origin_um,
+    #   z_spacing_um, transforms) from the volume's C11 metadata; place_profiles(profiles,
+    #   slice_id, frame, proportions) -> Placed (every profile its own cell until M7-13)
 write_cell_layers(placed, types, out_dir) -> list[Path]  # Neuroglancer precomputed ellipsoid
     # annotations, one sharded layer per type (C17); read_cell_layer(path) for tests
+    # implemented (M7-07), cells/layers.py: write_layer(out, placed, bounds, limit=4000) per class
+    #   (vectorised; written to out.tmp, then renamed); write_shard; read_layer and read_by_id
+    #   (looks only in the id's minishard, as the viewer does) for the tests
 export_table(placed, out: Path), export_qupath(profiles, slice_id, out: Path)   # C18
 density_map(placed, spec, cfg) -> Path                   # density.zarr, one channel per type (C18)
 run_cells(catalog, work, cfg, manifest, overwrite=False) -> StageResult
     # C7 shape without slide reads; local alignment and links resume per pair (like register),
     # placement, layers, exports and density are rebuilt per range
+    # implemented for placement and layers (M7-07), cells/stage.py: frame from volume.zarr
+    #   (FileNotFoundError without a volume or cell files; CellsInputError if the range is not in
+    #   the volume, the volume is unregistered, slices were registered again after it was built,
+    #   the z spacing or the class names differ); manifest "cells" -> "layers": signature (range,
+    #   cell-file fingerprints, volume hash, type table), counts, seconds; up to date -> skipped;
+    #   layers of other inputs: StageExistsError unless overwrite
 
 # store                              # implemented (M2)
 WorkDir(root).manifest, .volume        # the only place that knows file names
@@ -296,7 +308,8 @@ brainrec --config C qc --slices A-B [--overwrite]         # implemented (M4-04):
 brainrec --config C detect --slices A-B [--overwrite] [--no-ask]   # implemented (M7-06): cell files
     # per slice; asks "Start slice N? [y/N]" after each slice (no terminal = no; --no-ask runs all);
     # table of nuclei, dropped (radius limits), blurred tiles and seconds per slice
-brainrec --config C cells --slices A-B [--overwrite]      # M7-07: link, place, layers, table, density
+brainrec --config C cells --slices A-B [--overwrite]      # M7-07 (implemented: place, layers; table of
+    # cells per class); later link (M7-13), table, density
 brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512]   # viewer on port+1
     # --slices: A-B or N. User errors (config, slice range, missing step, other settings without
     # --overwrite, drive not connected) end with one line `error: ...`, exit status 1; a failed pair
@@ -515,6 +528,7 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   - by-id index: sharded (`neuroglancer_uint64_sharded_v1`, identity hash, shard_bits 0, minishard_bits 12, raw encodings), one file `by_id/0.shard`;
   - spatial index: one sharded level per `spatial<i>/0.shard` (minishard_bits 6, keys = compressed Morton code). The grid is [2^i, 2^i, 1]; each chunk holds at most `limit` = 4000 annotations in random order, and the finest level takes the rest.
 - **File count:** at most about 20 files per layer, plus `info`.
+- **As implemented (M7-07):** record = centre and radii (6 × float32), then the properties in the order of the table (padded to 44 bytes). Every layer of a run shares the bounds of all cells, so the layers line up; empty classes still get a layer (one empty spatial level). Real slice 1: 436,334 cells in 8 s, 3 to 6 files per layer.
 - **Viewer:** the layer shader gets a colour picker and a `min_confidence` slider; the tissue fades with the image layer's own opacity (M7-01).
 
 **C18 Cell table, QuPath export and density maps.**

@@ -77,7 +77,7 @@ Conventions that apply to every task (not repeated below):
 | M7-04 | Work-dir layout and cell file I/O | store | Low | Done | M7-00, M3-01 |
 | M7-05 | Nucleus detection, tiled | detect | High | Done | M7-03, M7-04 |
 | M7-06 | `detect` stage and `brainrec detect` | detect | Medium | Done | M7-05, M4-04 |
-| M7-07 | 3D placement, cell layers and `cells` stage | cells | High | To do | M7-06 |
+| M7-07 | 3D placement, cell layers and `cells` stage | cells | High | Done | M7-06 |
 | M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | To do | M7-07 |
 | M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | To do | M7-08 |
 | M7-10 | Detection accuracy | detect | Medium | To do | M7-02, M7-18 (+ labels), M7-09 |
@@ -1129,7 +1129,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: cells
 
-#### M7-07 3D placement, cell layers and `cells` stage · High · To do
+#### M7-07 3D placement, cell layers and `cells` stage · High · Done
 - **Objective:** the first blobs in 3D. Each profile is placed as its own cell until M7-13.
 - **Subtasks:**
   - **M7-07a** placement in the volume frame (C16: chained transform, scale, z as in the volume);
@@ -1138,6 +1138,21 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-06. **Files:** `src/brainrec/cells/place.py`, `layers.py`, `stage.py`, `src/brainrec/pipeline/cli.py`.
 - **Acceptance:** AC12 on synthetic data; at most about 20 files per layer.
 - **Tests:** `tests/unit/test_cells_place.py`, `test_cell_layers.py`, `test_cli.py`.
+- **Result (2026-11-08):**
+  - **Placement** (`cells/place.py`):
+    - the frame is read from the volume's metadata (C11): slice ids, canvas origin, z spacing and the transforms the volume was built with. The cells stage therefore needs `brainrec volume` for the range first, and checks that the slices were not registered again since then;
+    - every profile is its own cell; cell id = slice × 2³² + profile index.
+  - **Layers** (`cells/layers.py`): the M7-01 prototype, rewritten vectorised for tens of millions of cells, plus a reader that looks a cell up the way the viewer does.
+  - **Stage and command:** `brainrec cells --slices A-B [--overwrite]` prints the cells per class and the layer paths.
+    - Up to date: nothing is done. Layers of other inputs (range, cell files, volume, type table) need `--overwrite`.
+    - Clear one-line errors for a missing volume or cell files, a range outside the volume, a volume built before a new registration, another z spacing, or other classes.
+  - **AC12 passed on synthetic data:** detected nuclei placed through a known similarity transform lie within 0.88 µm of the transformed true centres (all of them, once), radii within 10%, no centre outside the mask.
+  - **Real check, slice 1:** 436,334 cells in 6 layers in 8 s with 380 MB of memory; 3 to 6 files and 12 to 28 MB per layer; all cells inside the volume's extent in x and y. The layers are not yet in the viewer: that is M7-08.
+  - **Tests:** 6 placement, 11 layer, 3 stage and 2 CLI tests; full suite 404 passed; ruff and mypy clean.
+  - **Mutation check:** 18 deliberate faults; 15 were caught at once. The 3 missed ones showed gaps in the tests, now closed:
+    - chunks filed under the wrong minishard (the test reader scanned every minishard, unlike the viewer; it now looks only in the id's minishard and checks each key's place);
+    - cells dropped on the deepest level (a test with a dense cluster now reaches it);
+    - a coarse level that is not a random sample (the test cells were already in random order; they are now sorted by position first).
 
 #### M7-12 Local alignment at cell scale · High · To do
 - **Objective:** per pair, a displacement field k → k−1 accurate to 1 to 2 µm, computed from the nuclei on top of the pair transform (C15, R16).

@@ -36,7 +36,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 ## Current development status
 
-**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). M7-18 appearance groups done (2026-11-08): six appearance classes confirmed by the owner. M7-19 draft labels (1603 points, not ground truth) ready for expert correction in QuPath. Cell contracts (M7-00) fixed and approved. Synthetic nuclei and 3D cells (M7-03) and the cell file (M7-04) done. Nucleus detection over a whole slice (M7-05) and the `detect` stage with the interim classifier rules-v1 (M7-06) done. Next: M7-07 3D placement and cell layers.**
+**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). M7-18 appearance groups done (2026-11-08): six appearance classes confirmed by the owner. M7-19 draft labels (1603 points, not ground truth) ready for expert correction in QuPath. Cell contracts (M7-00) fixed and approved. Synthetic nuclei and 3D cells (M7-03) and the cell file (M7-04) done. Nucleus detection over a whole slice (M7-05) and the `detect` stage with the interim classifier rules-v1 (M7-06) done. Cells placed in 3D with one layer per class (M7-07) done. Next: M7-08 cell layers in the viewer.**
 
 | Item | Status |
 |---|---|
@@ -61,6 +61,7 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 .venv/bin/brainrec --config config/project.yaml qc --slices 1-10          # scores, overlays, flags
 .venv/bin/brainrec --config config/project.yaml volume --slices 1-10      # registered, tissue only
 .venv/bin/brainrec --config config/project.yaml detect --slices 1-10      # nuclei, classified; asks before each next slice
+.venv/bin/brainrec --config config/project.yaml cells --slices 1-10       # 3D cells, one layer per class (after volume)
 .venv/bin/brainrec --config config/project.yaml serve        # prints a viewer link; open it in Chrome
 .venv/bin/pytest                                             # tests
 .venv/bin/ruff check src tests scripts && .venv/bin/ruff format --check src tests scripts && .venv/bin/mypy

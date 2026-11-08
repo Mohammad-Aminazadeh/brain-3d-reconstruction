@@ -1,5 +1,5 @@
 """Interim CLI until `brainrec run` arrives in M5 (M2-08, M3-10, M4-04, M7-06): `preprocess`,
-`register`, `qc`, `volume` and `detect` for a slice range, and `serve`.
+`register`, `qc`, `volume`, `detect` and `cells` for a slice range, and `serve`.
 
 Mistakes in the input, the settings or the environment end with a one-line `error: ...` and exit
 status 1; anything else is a bug and keeps its traceback.
@@ -18,6 +18,7 @@ import zarr
 from pydantic import ValidationError
 
 from brainrec.catalog import Catalog, ProjectConfig
+from brainrec.cells.stage import CellsInputError, run_cells
 from brainrec.detect.classify import RULE_CLASSES
 from brainrec.detect.stage import run_detect
 from brainrec.preprocess import run_preprocess
@@ -34,7 +35,7 @@ class CliError(Exception):
 
 
 # never bugs: reported in one line, without a traceback
-USER_ERRORS = (CliError, OSError, StageExistsError, VolumeExistsError)
+USER_ERRORS = (CliError, OSError, StageExistsError, VolumeExistsError, CellsInputError)
 
 
 def _range(text: str) -> tuple[int, int]:
@@ -72,6 +73,7 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run all slices without asking before each next one (a slice takes about 16 min)",
     )
+    stage("cells", "cells in 3D: one viewer layer per class", "replace layers of other inputs")
     s = sub.add_parser("serve", help="serve the volume and open it in a local Neuroglancer")
     s.add_argument("--port", type=int, default=8000, help="data port; the viewer uses port+1")
     s.add_argument(
@@ -240,6 +242,19 @@ def _detect(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None
     _summary("detect", result, "slices", note)
 
 
+def _cells(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
+    catalog = _catalog(cfg, args.slices)
+    manifest = Manifest(work.manifest)
+    result = run_cells(catalog, work, cfg, manifest, overwrite=args.overwrite)
+    counts = manifest.get("cells")["layers"]["counts"]
+    print(f"{'class':<22}{'cells':>10}  layer")
+    for t in cfg.cell_types:
+        print(f"{t.name:<22}{counts[t.name]:>10}  {work.cell_layer(t.name)}")
+    state = "built" if result.done else "up to date"
+    print(f"cells (slices {args.slices[0]}-{args.slices[1]}): layers {state}, "
+          f"{sum(counts.values())} cells, each profile its own cell until linking (M7-13)")  # fmt: skip
+
+
 def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     if not work.volume.exists():
         raise CliError(f"no volume at {work.volume}: run `brainrec volume` first")
@@ -264,6 +279,7 @@ COMMANDS = {
     "qc": _qc,
     "volume": _volume,
     "detect": _detect,
+    "cells": _cells,
     "serve": _serve,
 }
 

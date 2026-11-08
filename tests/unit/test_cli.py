@@ -450,3 +450,31 @@ def test_detect_no_ask_never_asks(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", must_not_ask)
     _run(cfg, "detect", "--slices", "1-2", "--no-ask")
     assert capsys.readouterr().out.splitlines()[-1].startswith("detect (slices): 2 done")
+
+
+def test_cells_builds_layers_and_reports(tmp_path, capsys):
+    from tests.unit.test_cells_stage import make_setup
+
+    make_setup(tmp_path)
+    cfg = _write_config(tmp_path, tmp_path / "data", z_spacing_um=5.0)
+    _run(cfg, "cells", "--slices", "1-2")
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split() == ["class", "cells", "layer"]
+    assert lines[1].startswith("Neuron") and lines[1].rstrip().endswith("layer_neuron")
+    assert lines[-1].startswith("cells (slices 1-2): layers built, 80 cells")
+    _run(cfg, "cells", "--slices", "1-2")
+    assert "layers up to date" in capsys.readouterr().out.splitlines()[-1]
+
+
+def test_cells_errors_are_one_line(tmp_path):
+    from tests.unit.test_cells_stage import _volume, make_setup
+
+    _, work, *_ = make_setup(tmp_path)
+    cfg = _write_config(tmp_path, tmp_path / "data", z_spacing_um=5.0)
+    _volume(work, [1])
+    assert "build the volume for this range first" in _error(cfg, "cells", "--slices", "1-2")
+    work.cell_meta(1).unlink()
+    _volume(work, [1, 2])
+    assert _error(cfg, "cells", "--slices", "1-2") == (
+        "error: slices [1] have no cell file: run `brainrec detect`"
+    )
