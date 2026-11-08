@@ -197,8 +197,15 @@ cells_report(work, ids, cfg) -> dict                     # M7-16: counts and den
     # flags (outliers, blur, folds), review crops; evaluate(labels, cells) -> scores (M7-02, M7-10)
 
 # detect                             # M7; file contracts fixed in M7-00 (C13, C14); signatures may be refined by the implementing task
-detect_nuclei(rgb: ndarray, mask: ndarray, um_per_px: float, cfg) -> Profiles   # one tile;
-    # centres, radii (equivalent area), outlines, measurements (shape, staining, nucleolus) in µm
+# implemented (M7-05), refining the planned detect_nuclei(rgb, mask, um_per_px, cfg) per tile:
+load_detector(method) -> Detector(name, version, segment)   # "instanseg" or "stardist";
+    # segment(rgb, um_per_px) -> (labels, confidence per label or None); model loaded on first use
+detect_slice(reader, mask, mask_downsample, cfg, detector) -> Nuclei
+    # whole slice: tiles over the mask (detect/tiles.py: plan_tiles, Tile.owns, in_mask), a nucleus
+    # belongs to the tile holding its centre, objects cut by a window edge are left to the
+    # neighbour, centres on tissue only; measurements (detect/measure.py: measure_nuclei,
+    # refine_patch on level-0 patches, has_nucleolus, sharpness). Nuclei = the C13 columns
+    # without the class columns, plus tile_sharpness, n_blurred_tiles, n_refined
 classify(profiles: Profiles, model) -> Profiles          # class id, all class probabilities, confidence (decision 0006); "rules-v1" until M7-11
 # implemented (M7-02): detect/labels.py - Crop, Labels, CLASSES, candidate_centres, assign_split,
 #   crops_geojson, save_crops/load_crops, read_qupath(geojson, slice_id, mpp, crops, classes),
@@ -400,7 +407,13 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   - no centre lies outside the tissue mask (F12); profiles smaller than 8 µm² are dropped.
   - StarDist stays the second candidate (M7-10); the detector name and version are recorded.
 - **Level-0 patch:** for profiles of 8 µm diameter or more *(tunable)*, a 1x patch is read for the nucleolus and an exact outline and size (M7-01: nucleoli are 2 to 4 px at 2x).
-- **Sharpness:** variance of the Laplacian per tile at 2x, scaled to the level-0 value of M7-01. Tiles below `detect_min_sharpness` (default 100) are flagged, and their profiles get `blurred = 1`.
+  - Outline (M7-05): near the 2x border, a pixel belongs to the nucleus if its gray level is closer to the nucleus interior than to the ring around it, smoothed over 0.3 µm. The 2x outline is kept if the contrast is below 6 gray levels or the area changes by more than −40% / +60%.
+  - Nucleolus (M7-05, Proposed until expert labels): one compact interior spot (0.6 to 5 µm², at least 1 µm inside the border) that is at least 60 gray levels and 4.5 median absolute deviations darker than the nucleus, with at most two such spots (more = clumped chromatin). Calibrated by eye on 343 real nuclei; strict, so it misses some nucleoli.
+- **Sharpness:** variance of the Laplacian per tile at 2x over tissue away from the glass edge, times 0.18 (the level-0 value is 0.18 × the 2x value: 60 real windows, quartiles 0.17 and 0.19, M7-05). Tiles below `detect_min_sharpness` (default 100) are flagged, and their profiles get `blurred = 1`.
+- **Features (M7-05):** the 9 features are measured at 2x for every profile, so their scale differs from the level-0 values of M7-18; only `diameter_um` comes from the level-0 patch when there is one. Changes against M7-18:
+  - `cell_body` is the upper quartile of the ring 0.5 to 3 µm around the nucleus (a cell body lies on one side);
+  - `vessel_um`: lumens are bright gaps (gray > 0.85 × 255) of at least 15 µm² inside the tissue, the distance capped at 20 µm (half the overlap, so tiles do not change it);
+  - background levels come from tissue pixels only.
 - **`cells/{id}.npz`**, one row per profile. Arrays (float32 unless noted):
 
   | Field | Meaning |
@@ -410,7 +423,7 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   | `outline_offsets` (int64), `outline_xy` (int16) | ragged outline: vertices relative to the centre in units of 0.1 µm, at most 32 vertices per profile |
   | `diameter_um`, `elongation`, `solidity`, `darkness`, `texture`, `nucleolus`, `cell_body`, `halo`, `vessel_um` | the 9 appearance features of M7-18 (vessel and cell-body features improved in M7-05d) |
   | `nucleolus_seen` (uint8) | nucleolus visible (from the 1x patch; 0 when no patch) |
-  | `det_conf` | detection confidence |
+  | `det_conf` | detection confidence; NaN when the detector gives none (InstanSeg) |
   | `blurred` (uint8) | in a tile below the sharpness limit |
   | `class_id` (uint8) | C14 id, never empty (decision 0006) |
   | `class_prob` (n × n_classes) | probability of every class, in C14 order |
@@ -542,7 +555,7 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
 | Server | FastAPI + uvicorn | Lightweight, testable | |
 | Viewer | Neuroglancer (MVP), served locally by the `neuroglancer` Python package | Solves 3D streaming and orthogonal views, saving weeks; local serving avoids a public page reading from localhost | Less control over UX; replaceable, isolated to `serve/` |
 | Config | YAML + pydantic | Validated and versionable | |
-| Cell detection (M7) | Baseline: hematoxylin colour separation (scikit-image), threshold, split of touching nuclei (OpenCV, scikit-image). Compared in M7-01 with pretrained deep-learning detectors (Cellpose, StarDist or InstanSeg) | Baseline needs no new dependency; pretrained detectors are usually better on pale and touching nuclei | Deep learning needs PyTorch (about 1 to 2 GB) and the owner's permission; slower without a GPU |
+| Cell detection (M7) | InstanSeg `brightfield_nuclei` (`instanseg-torch`, PyTorch on the Apple GPU) at 2x, chosen in M7-01 against a colour-separation baseline, StarDist and Cellpose; StarDist stays available as an optional extra (`.[stardist]`) for the comparison in M7-10 | Best speed for its accuracy in M7-01 (about 1 s/mm² for the model); finds pale and touching nuclei | PyTorch adds about 1 GB; no confidence per nucleus; the model normalises each tile on its own |
 | Cell types (M7-11) | Classifier on the measurements of each profile (scikit-learn, Proposed) trained on owner labels | Small, explainable, fast | New dependency (permission needed); limited by what the stain shows |
 | Cell layers (M7-07) | Neuroglancer precomputed annotations (ellipsoids), sharded, own numpy writer | Native 3D blobs with properties, shaders and level of detail in the existing viewer | The format must be written by us; viewer speed with millions of cells is a risk (R13) |
 | Cell exports (M7-14) | CSV (standard library) and GeoJSON for QuPath | Readable by pathologists' tools without our code | |

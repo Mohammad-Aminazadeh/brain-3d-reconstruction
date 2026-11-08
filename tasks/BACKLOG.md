@@ -75,7 +75,7 @@ Conventions that apply to every task (not repeated below):
 | M7-00 | Cell contracts (C13 to C18) | docs | Low | Done | M7-01 |
 | M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | Done | M7-00, M3-02 |
 | M7-04 | Work-dir layout and cell file I/O | store | Low | Done | M7-00, M3-01 |
-| M7-05 | Nucleus detection, tiled | detect | High | To do | M7-03, M7-04 |
+| M7-05 | Nucleus detection, tiled | detect | High | Done | M7-03, M7-04 |
 | M7-06 | `detect` stage and `brainrec detect` | detect | Medium | To do | M7-05, M4-04 |
 | M7-07 | 3D placement, cell layers and `cells` stage | cells | High | To do | M7-06 |
 | M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | To do | M7-07 |
@@ -1036,7 +1036,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: detect
 
-#### M7-05 Nucleus detection, tiled · High · To do
+#### M7-05 Nucleus detection, tiled · High · Done
 - **Objective:** all nuclei of a slice, measured in µm (F16, C13).
 - **Subtasks:**
   - **M7-05a** tiles over the mask with overlap;
@@ -1049,6 +1049,43 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
   - border cells counted once, nothing outside the mask;
   - nucleolus flag correct on at least 90% of the synthetic nuclei.
 - **Tests:** `tests/unit/test_detect.py`.
+- **Result (2026-11-08):**
+  - **Code:**
+    - `detect/tiles.py`: cores that partition the 2x level, windows with 45 px (20 µm) margins, tiles without tissue skipped, `Tile.owns` (centre rule), `in_mask`.
+    - `detect/nuclei.py`: `load_detector("instanseg" | "stardist")`, `detect_slice(reader, mask, mask_downsample, cfg, detector) -> Nuclei` (C13 without the class columns). Objects cut by a window edge are left to the neighbouring tile; centres off the tissue are dropped.
+    - `detect/measure.py`: the 9 features at 2x, level-0 patches for nuclei of 8 µm or more (outline, size, nucleolus), sharpness per tile.
+    - Config: the C9 `detect_*` fields. `pyproject.toml`: `instanseg-torch`, and `stardist` as an optional extra; `requirements-lock.txt` regenerated. It also lists packages that are installed only for the spike, such as Cellpose.
+  - **Synthetic acceptance**, measured with a colour-based stand-in detector in `tests/synthetic/nuclei.py`:
+    - all 54 nuclei found once, none extra, including the 9 across tile borders;
+    - centres within 0.1 µm, radii within 6% (limits 0.5 µm and 10%);
+    - nothing on the glass: the stand-in does find the debris there, and the mask removes it;
+    - nucleolus flag 100% correct;
+    - one tile and many tiles give identical nuclei.
+  - **Real model on synthetic data:** InstanSeg finds every synthetic glial and "other" nucleus, but not the synthetic neuron (a pale nucleus drawn inside a darker body). On the real slides it finds neuron nuclei.
+  - **Real check** on 1 mm squares around the label crops of slices 1, 60 and 140 (6 mm², results in `<work>/spike/M7-05/`):
+    - 1100 to 1730 nuclei per mm²; median radius 3.1 to 3.3 µm.
+    - Against the M7-19 draft points (not ground truth): 90 to 95% of the detections are draft points, at a median distance of 0.2 to 0.3 µm. Of the draft points, 77 to 97% are found; the drafts also contain StarDist and level-0 detections.
+    - 220 to 490 level-0 patches per slice region, and 86 to 99% of them refined.
+  - **Nucleolus:**
+    - The first rule took chromatin clumps for nucleoli. Recalibrated by eye on 343 real nuclei, the rule now asks for one compact interior spot, much darker than the nucleus.
+    - The flag is set on 4 to 15% of the large nuclei, and the examples shown are mostly real nucleoli.
+    - It is strict, so it misses some. Proposed until expert labels.
+  - **Sharpness:** level-0 value = 0.18 × 2x value (60 real windows, quartiles 0.17 and 0.19).
+    - The default limit of 100 flags 9 of 21 tiles around a label crop of slice 60, with values of 54 to 113; 1 of 28 tiles on slice 1; none on slice 140.
+    - Values from 85 to 100 lie between sharp and clearly blurred. M7-16 reviews the flagged tiles.
+  - **Speed:**
+    - 6 to 8 s per mm² of tissue in these small regions, with many partial tiles and cold reads from the drive.
+    - From a profile of full tiles (InstanSeg about 0.18 s per tile, measurements about 0.1 s, patch reads about 0.1 s), about 2.5 s/mm² is expected on whole slices.
+    - M7-09 measures it.
+  - **Tests:** 23 detection tests plus 1 config test; full suite 358 passed; ruff and mypy clean.
+  - **Mutation check:** 16 deliberate faults, all caught. They covered:
+    - tile ownership, the window margin and cut objects;
+    - the mask filter and pixel conventions, including a half-pixel shift in the level-0 conversion (a tighter test was added for it);
+    - the blur and nucleolus flags, the halo sign, the border and clump rules;
+    - the inverted refinement, sharpness over glass and the lumen limit.
+  - **Consequences for M7-06 (Proposed):**
+    - The features are now measured at 2x, while M7-18 and the M7-19 rules used level 0. The `rules-v1` classifier that M7-06 needs (C13: every profile classified) must therefore take its reference groups from 2x features, for example by measuring the M7-18 cells again at 2x.
+    - `det_conf` is NaN with InstanSeg, which gives no confidence per nucleus.
 
 #### M7-06 `detect` stage and `brainrec detect` · Medium · To do
 - **Objective:** run detection per slice, resumable (C6, C7).

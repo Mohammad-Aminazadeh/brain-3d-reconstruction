@@ -21,10 +21,12 @@ dependencies = [
     "uvicorn",
     "pydantic",
     "pyyaml",
+    "instanseg-torch",  # nucleus detector (M7-05, decision after M7-01); brings torch
 ]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy", "httpx"]
+stardist = ["stardist", "tensorflow"]  # second detector candidate (detect_method: stardist)
 
 [project.scripts]
 brainrec = "brainrec.pipeline.cli:main"

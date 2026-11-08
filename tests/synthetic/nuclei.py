@@ -335,3 +335,57 @@ def cut_sections(
         transforms.append(t)
         deformations.append(d)
     return SectionStack(thickness_um, transforms, deformations, sections)
+
+
+# --- (c) a stand-in detector for the synthetic images -------------------------------------------
+
+_NUCLEUS_COLOURS = np.array([NEURON_NUCLEUS, PALE, DARK, MEDIUM, NUCLEOLUS, DEBRIS])
+_OTHER_COLOURS = np.array([NEUROPIL, GLASS, LUMEN, HALO, BODY])
+
+
+def segment_by_colour(rgb: np.ndarray, um_per_px: float) -> tuple[np.ndarray, None]:
+    """Labels of the synthetic nuclei (and debris). A stand-in for the real detector (same
+    signature as `brainrec.detect.nuclei.Segment`), so that tiling and measurements can be
+    tested against the truth without a deep-learning model.
+
+    Pixels are first sorted by their nearest drawing colour. Each object is then cut again at
+    half way between its own colour and the background around it (so its edge is not biased
+    by intermediate colours), and objects with a neck (solidity below 0.9: touching nuclei) are
+    split by a distance watershed."""
+    from scipy import ndimage as ndi
+    from skimage import measure
+    from skimage.morphology import h_maxima
+    from skimage.segmentation import watershed
+
+    img = rgb.astype(float)
+    palette = np.vstack([_NUCLEUS_COLOURS, _OTHER_COLOURS])
+    nearest = ((img[:, :, None, :] - palette[None, None]) ** 2).sum(axis=3).argmin(axis=2)
+    # thin rims of intermediate colour (edges of cell bodies) are not nuclei
+    rough = ndi.binary_opening(nearest < len(_NUCLEUS_COLOURS), np.ones((3, 3)))
+    comp, n = ndi.label(ndi.binary_fill_holes(rough))
+    fg = np.zeros(rough.shape, bool)
+    for k, sl in enumerate(ndi.find_objects(comp), start=1):
+        sl = tuple(slice(max(0, s.start - 3), s.stop + 3) for s in sl)
+        own = comp[sl] == k
+        ring = ndi.binary_dilation(own, iterations=2) & ~ndi.binary_dilation(own) & ~rough[sl]
+        inside = nearest[sl][own & rough[sl]]
+        if not ring.any() or not inside.size:
+            fg[sl] |= own
+            continue
+        colour = palette[np.bincount(inside).argmax()]
+        bg = palette[np.bincount(nearest[sl][ring], minlength=len(palette)).argmax()]
+        x = img[sl]
+        near_own = ((x - colour) ** 2).sum(axis=2) < ((x - bg) ** 2).sum(axis=2)
+        fg[sl] |= ndi.binary_fill_holes(near_own & ndi.binary_dilation(own, iterations=2))
+    labels, n = ndi.label(fg)
+    dist = ndi.distance_transform_edt(fg)
+    for p in measure.regionprops(labels):
+        if p.solidity >= 0.9:  # one convex object
+            continue
+        sl = p.slice
+        own = labels[sl] == p.label
+        markers, _ = ndi.label(h_maxima(dist[sl] * own, 1.0 / um_per_px), structure=np.ones((3, 3)))
+        parts = watershed(-dist[sl], markers, mask=own)
+        labels[sl][parts > 1] = n + parts[parts > 1] - 1
+        n += max(int(parts.max()) - 1, 0)
+    return labels.astype(np.int32), None

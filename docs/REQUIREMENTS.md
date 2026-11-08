@@ -370,4 +370,15 @@ Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups
   - the cell-body feature is near zero for most cells and the halo feature carries it instead;
   - the vessel distance is capped for nearly all cells.
 
-  Both are to be improved in M7-05d.
+  Both were changed in M7-05d (cell body: upper quartile of the ring; lumens: 0.85 × 255 and 15 µm², distance capped at 20 µm); whether they now separate the classes is measured with the expert labels (M7-11).
+
+### Nucleus detection on real slices (M7-05, 2026-11-08, read only)
+
+1 mm squares around the label crops of slices 1, 60 and 140 (6 mm² of tissue), InstanSeg at 2x through `detect_slice`:
+- **Counts:** 1100 to 1730 nuclei per mm²; median radius 3.1 to 3.3 µm.
+- **Against the draft points of M7-19 (not ground truth):**
+  - 90 to 95% of the detections are draft points, at a median distance of 0.2 to 0.3 µm;
+  - 77 to 97% of the draft points are found (the drafts also hold StarDist and level-0 detections).
+- **Nucleolus:** a strict rule, calibrated by eye. It flags 4 to 15% of the nuclei of 8 µm or more, and the examples shown are mostly real nucleoli. Many large nuclei here have coarse chromatin clumps that look like nucleoli at 2x.
+- **Sharpness:** the level-0 value is 0.18 × the 2x value (60 windows). Around one crop of slice 60, 9 of 21 tiles fall below the limit of 100.
+- **Speed:** about 2.5 s per mm² expected on whole slices (6 to 8 s in the small test regions).

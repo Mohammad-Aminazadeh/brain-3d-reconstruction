@@ -11,6 +11,7 @@ Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06)
 - **M4-05 done (2026-11-07):** owner accepted the QC; M4 closed. Peak check added as M4-06.
 - **M7-01 done (2026-11-07):** InstanSeg at 2x as the working detector, StarDist second; linking needed (adjacent sections supported); viewer handles 4 million blobs. Next: M7-02 (labelled cells), then M7-00 (contracts).
 - **M7-02 done (2026-11-08):** 20 label crops, QuPath files, labelling guide, evaluation code. Classification rules changed by the owner (decision 0006): every cell classified by appearance with a confidence; new task M7-18 (appearance groups) before the labelling. Next: M7-18.
+- **M7-18, M7-19, M7-00, M7-03, M7-04 and M7-05 done (2026-11-08):** class list confirmed, draft labels for the expert, cell contracts fixed, synthetic test data, cell file, nucleus detection over a whole slice. Next: M7-06 (`detect` stage).
 - **New goal (owner, 2026-11-05/06):** cells (later vessels and other structures) as 3D objects inside a volume that can be made transparent. This adds milestone M7 before M5 (section 10).
 - **Prerequisites:** none of the new tasks is needed before M4-04 or M4-05, and no done task has to be redone.
 - **Open inputs:** section thickness (the owner will supply it) and the supervisor's answers (`docs/REQUIREMENTS.md` section 6.2).
@@ -319,7 +320,7 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 | 4b | **M7-18** Appearance groups for the class list (added 2026-11-08; before the owner labels) | Owner fixes the class list |
 | 5 | **M7-00** Cell contracts C13 to C18 (done and approved 2026-11-08) | Owner approval |
 | 6 | M7-03 synthetic nuclei and 3D cells; M7-04 layout and cell files (both done 2026-11-08) | Tests |
-| 7 | M7-05 nucleus detection | Tests |
+| 7 | M7-05 nucleus detection (done 2026-11-08) | Tests |
 | 8 | M7-06 `detect` stage | Tests |
 | 9 | M7-07 placement, layers, `cells` stage | **AC12** |
 | 10 | M7-08 viewer | Tests, owner |

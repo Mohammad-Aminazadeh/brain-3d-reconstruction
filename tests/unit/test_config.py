@@ -68,3 +68,12 @@ def test_qc_thresholds_default_and_can_be_switched_off(tmp_path):
     assert (cfg.qc_min_ncc, cfg.qc_min_dice) == (0.40, 0.93)  # calibrated in M4-05
     cfg = _load(tmp_path, {**REQUIRED, "qc_min_ncc": 0.35, "qc_min_dice": None})
     assert (cfg.qc_min_ncc, cfg.qc_min_dice) == (0.35, None)
+
+
+def test_detection_settings_default_to_contract_c9(tmp_path):
+    cfg = _load(tmp_path, REQUIRED)
+    assert (cfg.detect_downsample, cfg.detect_method, cfg.detect_tile_px) == (2, "instanseg", 1024)
+    assert (cfg.detect_overlap_um, cfg.detect_min_area_um2) == (40.0, 8.0)
+    assert (cfg.detect_patch_min_diameter_um, cfg.detect_min_sharpness) == (8.0, 100.0)
+    cfg = _load(tmp_path, {**REQUIRED, "detect_method": "stardist", "detect_tile_px": 512})
+    assert (cfg.detect_method, cfg.detect_tile_px) == ("stardist", 512)

@@ -49,6 +49,15 @@ class ProjectConfig(BaseModel):
     qc_min_ncc: float | None = 0.40  # real pairs 0.346 to 0.754
     qc_min_dice: float | None = 0.93  # real pairs 0.904 to 0.981; reflects damaged margins
 
+    # nucleus detection (contract C9, C13; decided after the M7-01 spike)
+    detect_downsample: int = 2  # detection level: 2x = 0.44 µm/px
+    detect_method: str = "instanseg"  # or "stardist" (second candidate, M7-10)
+    detect_tile_px: int = 1024  # read window per tile at the detection level
+    detect_overlap_um: float = 40.0  # windows overlap; a nucleus belongs to the tile of its centre
+    detect_min_area_um2: float = 8.0  # smaller profiles are dropped
+    detect_patch_min_diameter_um: float = 8.0  # from this size a 1x patch gives size and nucleolus
+    detect_min_sharpness: float = 100.0  # tiles below are blurred (level-0 scale of M7-01)
+
     @classmethod
     def load(cls, path: Path) -> "ProjectConfig":
         """Settings from a YAML file. Raises pydantic.ValidationError on missing, unknown or
