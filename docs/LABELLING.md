@@ -2,7 +2,9 @@
 
 For the person who marks cells (owner or pathologist). Your marks are the ground truth that measures how accurately the software finds and classifies cells, and they train its classifier. Time needed: about 5 to 7 hours for all 20 crops (about 1500 cells).
 
-> **Class list status (2026-11-08):** first labelling round, decision 0006. Before you start, the automatic appearance groups (task M7-18) are shown to you and the supervisor. The list below may still change then, so wait for the go-ahead.
+> **Class list status (2026-11-08):** confirmed by the owner after the automatic appearance groups (M7-18). The supervisor's answer to Q9 may still change it.
+>
+> **Reference pictures:** example cells of each look are in `/Volumes/My Passport/3D Brain Reconstruction/spike/M7-18/group_0.jpg` to `group_7.jpg`. They show groups found automatically, not checked classes. See the table below for which group shows which class.
 
 ## What you get
 
@@ -19,12 +21,14 @@ Choose the class by the cell's **appearance**. Always pick the most likely class
 
 | Class (exact name in QuPath) | Looks like (this stain) |
 |---|---|
-| **Neuron** | Purple stained cell body (often triangular, with a process) around a large, round, **pale** nucleus with a **dark nucleolus** |
-| **Astrocyte-like** | Medium, round to oval, **pale** nucleus with fine, evenly spread chromatin; no visible cell body |
-| **Oligodendrocyte-like** | **Small, round, dark** nucleus with dense chromatin, often with a clear halo; often in rows (white matter) or next to a neuron |
-| **Microglia-like** | Small, **elongated**, rod-, comma- or bean-shaped dark nucleus, often irregular |
-| **Vessel-wall** | Flat, elongated nucleus lying **along a vessel** lumen (endothelial cells, pericytes) |
+| **Neuron** | Either a large, round, **pale** nucleus with a **dark nucleolus**, or a nucleus inside a purple stained cell body (often triangular, with a process); often both. Reference groups 7 and 5 |
+| **Astrocyte-like** | Medium, round to oval, **pale** nucleus with fine, evenly spread chromatin; no visible cell body. Reference group 6 |
+| **Oligodendrocyte-like** | **Small, round, dark** nucleus with dense chromatin, **often but not always** with a clear halo; often in rows (white matter) or next to a neuron. Reference groups 3 (with halo) and 0 |
+| **Microglia-like** | Small, **elongated**, rod-, comma- or bean-shaped dark nucleus, often irregular, **not** on a vessel. Reference groups 2 and 4 |
+| **Vessel-wall** | Flat, elongated nucleus lying **along a vessel** (endothelial cells, pericytes). It looks like a microglia-like nucleus; the vessel next to it decides. Reference groups 2 and 4 |
 | **Other** | A nucleus that fits none of the above (for example a lymphocyte), or one you cannot place at all |
+
+Medium round nuclei between "small, dark" and "pale" (reference group 1) are the hardest cases: decide between Oligodendrocyte-like and Astrocyte-like by darkness and chromatin.
 
 Do **not** mark red blood cells (no nucleus), empty holes, debris or out-of-focus smudges that are not recognisable nuclei.
 

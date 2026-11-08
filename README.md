@@ -36,7 +36,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 ## Current development status
 
-**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). Next task: M7-18 appearance groups, which fix the class list before labelling.**
+**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). M7-18 appearance groups done (2026-11-08): six appearance classes confirmed by the owner. Next: M7-19 draft labels for expert correction.**
 
 | Item | Status |
 |---|---|

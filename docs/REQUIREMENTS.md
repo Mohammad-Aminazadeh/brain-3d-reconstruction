@@ -339,3 +339,35 @@ Outputs in the work dir `spike/M7-01/` (figures, `detect.json`, `recur.json`, te
 - **Format:** the prototype writer of contract C17 (ellipsoids in µm, 6-level sharded spatial index, sharded by-id index).
 - **Cost:** 13 s to write, 426 MB, 8 files per layer. A test read of the by-id index returns the right cell.
 - **Owner check in the browser (2026-11-07):** works without problems: smooth in 2D and 3D, layers toggle and recolour, the confidence slider filters, a clicked cell shows its properties, and the tissue fades to opacity 0.
+
+### Appearance groups (M7-18, 2026-11-08, read only, `scripts/appearance_groups.py`)
+
+Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups.json`, `cells.csv`).
+
+- **Cells:** 2795 nuclei (InstanSeg, level 0) from 40 crops of 250 µm: the 20 label crops and 20 more on slices 8 to 135.
+- **Features (9):** diameter, elongation, solidity, darkness, chromatin texture, nucleolus contrast, cell-body stain around the nucleus, halo brightness, distance to a vessel lumen. They were standardised; diameter and elongation on a log scale.
+- **Grouping:** k-means for 3 to 10 groups.
+  - **Stability** (agreement over 15 re-runs on 80% of the cells): 0.77 (3), 0.87 (4), 0.86 (5), 0.72 (6), 0.91 (7), **0.92 (8)**, 0.79 (9), 0.70 (10). Eight groups were used.
+  - **Separation** (silhouette): only 0.13 to 0.16 for every number of groups. The looks form a continuum with dense regions, not sharply separated types. A classifier trained on labels is needed; the groups only map the variety.
+- **Groups** (by median diameter) and what the galleries show:
+
+  | Group | Share | Median looks | Matches |
+  |---|---|---|---|
+  | 0 | 14% | 6.0 µm, round, darkest | Oligodendrocyte-like |
+  | 1 | 23% | 6.2 µm, round, medium dark | Between oligodendrocyte-like and astrocyte-like |
+  | 2 | 10% | 6.3 µm, elongated (1.96) | Microglia-like or vessel-wall |
+  | 3 | 17% | 6.6 µm, round, dark, **clear halo** | Oligodendrocyte-like (clearest group) |
+  | 4 | 3% | 6.9 µm, very elongated or irregular (2.28) | Microglia-like or vessel-wall, plus detector errors (outlines including part of a cell body) |
+  | 5 | 8% | 7.4 µm, nucleus inside a **dark stained cell body** | Neuron |
+  | 6 | 12% | 7.5 µm, **palest**, little texture | Astrocyte-like (plus faint nuclei) |
+  | 7 | 13% | 8.8 µm, round, textured, nucleolus | Neuron (plus some large astrocyte-like) |
+
+- **Conclusion:** the data supports the six-class list of decision 0006, and no group falls outside it. Confirmed by the owner (2026-11-08), together with the clarifications in `docs/LABELLING.md`.
+  - Neurons appear in two looks: a large nucleus with a nucleolus, and a nucleus inside a stained cell body.
+  - Microglia-like and vessel-wall cells look alike as nuclei. They differ by their surroundings, and the vessel feature failed (lumens are rarely open in this tissue), so labels must separate them.
+  - Group 1 marks where oligodendrocyte-like and astrocyte-like meet. The labels matter most there.
+- **Feature limits:**
+  - the cell-body feature is near zero for most cells and the halo feature carries it instead;
+  - the vessel distance is capped for nearly all cells.
+
+  Both are to be improved in M7-05d.

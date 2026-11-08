@@ -70,7 +70,7 @@ Conventions that apply to every task (not repeated below):
 | M6-04 | Owner sign-off | review | Low | To do | M6-01, M6-02, M6-03 |
 | M7-01 | **Real-data spike: detection, recurrence of nuclei, viewer load (first M7 task)** | integration | High | Done | M3-11 |
 | M7-02 | Labelled cells and evaluation | detect | Medium | Done | M7-01 |
-| M7-18 | Appearance groups for the class list (added 2026-11-08) | detect | Medium | To do | M7-02 |
+| M7-18 | Appearance groups for the class list (added 2026-11-08) | detect | Medium | Done | M7-02 |
 | M7-00 | Cell contracts (C13 to C18) | docs | Low | To do | M7-01 |
 | M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | To do | M7-00, M3-02 |
 | M7-04 | Work-dir layout and cell file I/O | store | Low | To do | M7-00, M3-01 |
@@ -899,7 +899,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
     - **Corrections during the task:** one code bug fixed (F1 was undefined instead of 0 when nothing matched). Two errors in my own test data fixed: the half-pixel offset of pixel centres, and a class list that did not hold the swap it described.
     - **Mutation check:** 13 deliberate faults. 12 were caught at once. A transposed confusion table first slipped through because the test case was symmetric; the test is now asymmetric and catches it.
 
-#### M7-18 Appearance groups for the class list · Medium · To do
+#### M7-18 Appearance groups for the class list · Medium · Done
 - **Objective:** let the cells' measured looks propose the classes before anyone labels (owner, 2026-11-08, decision 0006).
 - **Method:**
   - detect nuclei (InstanSeg, 2x) on the label crops and on further crops across the block;
@@ -910,7 +910,16 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Decision:** the owner (and the supervisor, Q9) confirms or adjusts the class list in `docs/LABELLING.md`; only then the labelling starts.
 - **Depends on:** M7-02. **Files:** `scripts/appearance_groups.py` (throwaway), `docs/LABELLING.md` (class list).
 - **Acceptance:** the owner has seen the galleries and fixed the class list.
-- **Note:** may need scikit-learn for clustering (covered by the owner's permission for detection tools, 2026-11-07; to be confirmed).
+- **Note:** needs scikit-learn for clustering. Installed 2026-11-08 (1.9.1), as announced to the owner under the permission for detection tools.
+- **Work (2026-11-08):**
+  - **Run:** `scripts/appearance_groups.py` grouped 2795 nuclei from 40 crops (9 features, k-means; 8 groups, the most stable at 0.92). The groups are weakly separated (silhouette 0.13 to 0.16): a continuum.
+  - **Galleries:** `spike/M7-18/group_0.jpg` to `group_7.jpg`. Findings in `docs/REQUIREMENTS.md` section 7, "Appearance groups".
+  - **Proposal:** keep the six classes. Clarify in the guide:
+    - (a) neurons may show either a large nucleus with a nucleolus or a nucleus inside a stained cell body;
+    - (b) oligodendrocyte-like nuclei often, but not always, have a halo;
+    - (c) tell microglia-like from vessel-wall cells by the surroundings: a vessel wall next to the nucleus means vessel-wall;
+    - (d) the gallery images serve as reference pictures for the labeller.
+  - **Owner decision (2026-11-08):** the six classes and the clarifications (a) to (d) are approved; `docs/LABELLING.md` updated. Q9 may still change the list.
 
 ### Component: docs
 
