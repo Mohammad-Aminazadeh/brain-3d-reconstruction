@@ -73,8 +73,8 @@ Conventions that apply to every task (not repeated below):
 | M7-18 | Appearance groups for the class list (added 2026-11-08) | detect | Medium | Done | M7-02 |
 | M7-19 | Draft labels for expert correction (added 2026-11-08) | detect | Medium | Done | M7-18 |
 | M7-00 | Cell contracts (C13 to C18) | docs | Low | Done | M7-01 |
-| M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | To do | M7-00, M3-02 |
-| M7-04 | Work-dir layout and cell file I/O | store | Low | To do | M7-00, M3-01 |
+| M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | Done | M7-00, M3-02 |
+| M7-04 | Work-dir layout and cell file I/O | store | Low | Done | M7-00, M3-01 |
 | M7-05 | Nucleus detection, tiled | detect | High | To do | M7-03, M7-04 |
 | M7-06 | `detect` stage and `brainrec detect` | detect | Medium | To do | M7-05, M4-04 |
 | M7-07 | 3D placement, cell layers and `cells` stage | cells | High | To do | M7-06 |
@@ -974,7 +974,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: tests
 
-#### M7-03 Synthetic nuclei and synthetic 3D cells · Medium · To do
+#### M7-03 Synthetic nuclei and synthetic 3D cells · Medium · Done
 - **Objective:** test data with known truth for detection, placement and linking.
 - **Outputs:** `tests/synthetic/nuclei.py` with two generators:
   - (a) RGB tiles with hematoxylin-like nuclei of known centre, radius and type. They include touching nuclei, nucleoli, pale neuron nuclei, cells on tile borders, and a mask;
@@ -982,10 +982,38 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-00, M3-02. **Files:** `tests/synthetic/nuclei.py`.
 - **Acceptance:** generated truth is self-consistent: profile radii follow the cut height, and cells on tile borders are listed once.
 - **Tests:** `tests/unit/test_synthetic_nuclei.py`.
+- **Result (2026-11-08):**
+  - **(a) `make_nuclei`:** a 2x image (0.441 µm/px) with 8 nuclei of each of the six classes in their M7-18 looks:
+    - neuron: a pale nucleus with a dark nucleolus in a stained cell body;
+    - astrocyte-like: pale, oval;
+    - oligodendrocyte-like: small, dark, round, with a halo;
+    - microglia-like: dark, elongated;
+    - vessel-wall: elongated, along a lumen;
+    - other.
+
+    It also has 3 touching pairs, nuclei crossing tile borders, and a glass strip with dark debris outside the tissue mask. The truth per nucleus is its centre (C1), equivalent-area radius, axis ratio, angle, class, nucleolus, pair and border flag.
+  - **(b) `make_cell_field` + `cut_sections`:**
+    - non-overlapping spheres cut into consecutive sections of known thickness;
+    - each section gets a known similarity transform (slice → reference, C2) and a smooth deformation (two sine waves per axis, amplitude up to 10 µm);
+    - profiles are in the slice frame, with the largest cut radius within the section and the true cell id;
+    - `SectionStack.to_slice` maps reference points into a section.
+  - **Correction during the task:** the first image drew the neuron nucleus in nearly the colour of its cell body; it is now paler, as on the real slides.
+  - **Tests:** 11, all passing:
+    - every class with its look;
+    - deterministic for the seed;
+    - nuclei in the tissue and darker than the neuropil;
+    - the truth radius equals the drawn nucleus' equivalent radius within 10%;
+    - touching pairs touch;
+    - border nuclei cross a tile line and are listed once;
+    - debris only on the glass;
+    - profile radius = sqrt(R² − dz²) and never below 1.6 µm;
+    - cells span consecutive sections without gaps;
+    - slice positions map back to the deformed reference;
+    - sections are moved differently.
 
 ### Component: store
 
-#### M7-04 Work-dir layout and cell file I/O · Low · To do
+#### M7-04 Work-dir layout and cell file I/O · Low · Done
 - **Objective:** paths and formats of C13 to C18 in one place.
 - **Outputs:**
   - `WorkDir` paths for cell files, pair files, layers, table, QuPath exports and density maps;
@@ -994,6 +1022,17 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-00, M3-01. **Files:** `src/brainrec/store/layout.py`, `src/brainrec/store/cells.py`.
 - **Acceptance:** round trip exact; ids validated as for the other paths.
 - **Tests:** `tests/unit/test_store_cells.py`.
+- **Result (2026-11-08):**
+  - **Layout:** `WorkDir` gets `cells_dir`, `cell_profiles`, `cell_meta`, `cell_pair`, `cell_pair_meta`, `cell_layer` (lower-case class name; empty names, `/` and leading dots refused), `cell_table`, `qupath`, `density`, `labels_dir`.
+  - **Cell file:** `src/brainrec/store/cells.py`: `Profiles` (C13 fields and dtypes), `encode_outlines` (at most 32 vertices, int16 in 0.1 µm relative to the centre), `save_profiles` and `load_profiles`.
+    - Features are stored by name; the npz is written first and the json last, both atomically.
+    - **Validation** on save and load: array shapes; class ids 1..n (no unclassified); class = most probable; confidence = top probability; outline index; vertex limit; count against the metadata; schema.
+  - **Manifest keys** `detect` and `cells` are left to the stages that write them (M7-06, M7-07), as for the existing stages.
+  - **Tests:** 15 cell-file tests and 6 more layout tests; full suite 334 passed; ruff and mypy clean.
+  - **Mutation check:** 10 deliberate faults.
+    - 9 were caught at once.
+    - "Metadata written before the data" was missed, because the test only simulated a crash after a full save; a test of a failing data write now catches it.
+    - A second fault (positions stored as float32) at first showed as missed only because Python reused a cached compiled file. Rerun without the cache, it is caught. Mutation checks now run with `-B`.
 
 ### Component: detect
 

@@ -231,7 +231,9 @@ WorkDir(root).manifest, .volume        # the only place that knows file names
     .pair_transform(k), .chained_transform(id)               # implemented (M3-01), C5
     .qc_report, .qc_overlay(k); .reg_dir, .mask_dir, .transforms_dir, .qc_dir   # (M3-01), C10
     .cell_profiles(id), .cell_meta(id), .cell_pair(k), .cell_layer(type), .cell_table,
-    .qupath(id), .density                                    # M7-04, C13 to C18
+    .qupath(id), .density, .labels_dir                       # implemented (M7-04), C13 to C18
+# store/cells.py (M7-04): Profiles (C13), encode_outlines, save_profiles(work, id, profiles, meta),
+#   load_profiles(work, id) -> (Profiles, meta); json written last; validates shapes and classes
     # ids must be positive integers; anything else raises ValueError
 Manifest(path).get(key), .set(key, value)   # JSON, atomic write
 

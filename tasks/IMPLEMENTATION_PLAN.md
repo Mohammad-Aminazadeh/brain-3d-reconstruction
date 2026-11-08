@@ -318,7 +318,7 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 | 4 | **M7-02** Labelled cells and evaluation (done 2026-11-08; the owner labels after M7-18) | Crops and guide delivered |
 | 4b | **M7-18** Appearance groups for the class list (added 2026-11-08; before the owner labels) | Owner fixes the class list |
 | 5 | **M7-00** Cell contracts C13 to C18 (done and approved 2026-11-08) | Owner approval |
-| 6 | M7-03 synthetic nuclei and 3D cells; M7-04 layout and cell files | Tests |
+| 6 | M7-03 synthetic nuclei and 3D cells; M7-04 layout and cell files (both done 2026-11-08) | Tests |
 | 7 | M7-05 nucleus detection | Tests |
 | 8 | M7-06 `detect` stage | Tests |
 | 9 | M7-07 placement, layers, `cells` stage | **AC12** |
