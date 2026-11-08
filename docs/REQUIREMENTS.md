@@ -94,6 +94,8 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
     - The image volume is the *tissue layer*. Its opacity can be lowered to zero, which makes "the rest of the tissue" transparent. No separate name is needed.
     - *Structures* are detected objects: cells now, vessels and others in M8.
     - A *profile* is the cut surface of one cell in one section; a *cell* is one or more linked profiles.
+23. **Long runs ask before each next slide** (owner, 2026-11-08): detection of all 140 slices takes about 39 h. `brainrec detect` therefore asks after each slide whether to start the next one; a later run continues with the slides not yet done. `--no-ask` runs without asking.
+24. **The interim classifier's reference lives in the code** (owner, 2026-11-08): `src/brainrec/detect/rules_v1.json` (2 KB), versioned with the code like a calibrated constant.
 
 ## 5. Proposed assumptions awaiting approval
 
@@ -382,3 +384,10 @@ Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups
 - **Nucleolus:** a strict rule, calibrated by eye. It flags 4 to 15% of the nuclei of 8 µm or more, and the examples shown are mostly real nucleoli. Many large nuclei here have coarse chromatin clumps that look like nucleoli at 2x.
 - **Sharpness:** the level-0 value is 0.18 × the 2x value (60 windows). Around one crop of slice 60, 9 of 21 tiles fall below the limit of 100.
 - **Speed:** about 2.5 s per mm² expected on whole slices (6 to 8 s in the small test regions).
+
+### Detection of a whole slice (M7-06, 2026-11-08, `brainrec detect --slices 1`)
+
+- **Slice 1:** 436,334 nuclei on 397 mm² (1099 per mm²); 990 s (2.5 s per mm²); cell file 48 MB; peak memory 4.1 GB.
+- **Classes (interim classifier rules-v1, not checked against labels):** Neuron 19%, Astrocyte-like 34%, Oligodendrocyte-like 34%, Microglia-like 7%, Vessel-wall 6%.
+- **Focus:** 26% of the tiles (21% of the nuclei) are below the sharpness limit. They form compact patches of lost focus in the scan.
+- **For all 140 slices:** about 39 h of detection and about 7 GB of cell files.

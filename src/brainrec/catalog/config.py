@@ -3,7 +3,30 @@
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class CellType(BaseModel):
+    """One row of the type table (contract C14). Ids are stable and never reused."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)  # 0 is reserved and never written
+    name: str = Field(min_length=1)
+    colour: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    proportions: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    radius_um: tuple[float, float]  # plausible profile radii; others are dropped and logged
+
+
+# C14 (M7-00, approved 2026-11-08); colours Okabe-Ito
+DEFAULT_CELL_TYPES = [
+    CellType(id=1, name="Neuron", colour="#E69F00", radius_um=(2.0, 15.0)),
+    CellType(id=2, name="Astrocyte-like", colour="#56B4E9", radius_um=(2.0, 8.0)),
+    CellType(id=3, name="Oligodendrocyte-like", colour="#009E73", radius_um=(1.5, 6.0)),
+    CellType(id=4, name="Microglia-like", colour="#F0E442", radius_um=(1.5, 8.0)),
+    CellType(id=5, name="Vessel-wall", colour="#D55E00", radius_um=(1.5, 10.0)),
+    CellType(id=6, name="Other", colour="#999999", radius_um=(1.5, 15.0)),
+]
 
 
 class ProjectConfig(BaseModel):
@@ -57,6 +80,19 @@ class ProjectConfig(BaseModel):
     detect_min_area_um2: float = 8.0  # smaller profiles are dropped
     detect_patch_min_diameter_um: float = 8.0  # from this size a 1x patch gives size and nucleolus
     detect_min_sharpness: float = 100.0  # tiles below are blurred (level-0 scale of M7-01)
+    cell_types: list[CellType] = Field(default_factory=lambda: list(DEFAULT_CELL_TYPES))
+
+    @field_validator("cell_types")
+    @classmethod
+    def _ids_in_order(cls, types: list[CellType]) -> list[CellType]:
+        # class_id indexes the class probabilities (C13), so ids must be 1..n in order
+        if [t.id for t in types] != list(range(1, len(types) + 1)):
+            raise ValueError("cell type ids must be 1, 2, 3, ... in order")
+        if len({t.name for t in types}) != len(types):
+            raise ValueError("cell type names must be unique")
+        if any(not 0 < t.radius_um[0] < t.radius_um[1] for t in types):
+            raise ValueError("radius_um must be (min, max) with 0 < min < max")
+        return types
 
     @classmethod
     def load(cls, path: Path) -> "ProjectConfig":

@@ -77,3 +77,20 @@ def test_detection_settings_default_to_contract_c9(tmp_path):
     assert (cfg.detect_patch_min_diameter_um, cfg.detect_min_sharpness) == (8.0, 100.0)
     cfg = _load(tmp_path, {**REQUIRED, "detect_method": "stardist", "detect_tile_px": 512})
     assert (cfg.detect_method, cfg.detect_tile_px) == ("stardist", 512)
+
+
+def test_cell_types_default_to_c14_and_are_validated(tmp_path):
+    cfg = _load(tmp_path, REQUIRED)
+    assert [(t.id, t.name) for t in cfg.cell_types][:2] == [(1, "Neuron"), (2, "Astrocyte-like")]
+    assert len(cfg.cell_types) == 6 and cfg.cell_types[2].radius_um == (1.5, 6.0)
+    row = {"id": 1, "name": "Neuron", "colour": "#E69F00", "radius_um": [2, 15]}
+    bad = [
+        [row, {**row, "id": 3, "name": "Glia"}],  # ids not 1..n
+        [row, {**row, "id": 2}],  # duplicate name
+        [{**row, "radius_um": [5, 2]}],  # min above max
+        [{**row, "colour": "orange"}],  # not #RRGGBB
+        [{**row, "shape": "round"}],  # unknown field
+    ]
+    for types in bad:
+        with pytest.raises(ValidationError):
+            _load(tmp_path, {**REQUIRED, "cell_types": types})

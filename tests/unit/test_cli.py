@@ -360,3 +360,93 @@ def test_serve_starts_viewer_and_data_server(tmp_path, monkeypatch, capsys):
     assert viewer_port == 8101 and started["data"] == ("127.0.0.1", 8100)
     assert "http://127.0.0.1:8100/volume.zarr" in json.dumps(state)
     assert "Viewer (open in Chrome): VIEWER" in capsys.readouterr().out
+
+
+def _detect_setup(tmp_path, monkeypatch, **settings):
+    """Two synthetic nucleus slides with their preprocess files; detect reads them through a
+    fake reader with the stand-in detector and a test classifier."""
+    from brainrec.detect.stage import run_detect
+    from tests.synthetic.nuclei import make_nuclei
+    from tests.unit.test_detect_stage import DETECTOR, MODEL, Factory, _setup
+
+    images = {k: make_nuclei(shape=(1024, 1024), seed=k, um_per_px=0.2205, n_per_class=2,
+                             touching_pairs=1, glass_px=128) for k in (1, 2)}  # fmt: skip
+    _setup(tmp_path, images)  # data files, mask and metadata of preprocess
+    reader = {"reader_factory": Factory(images), "detector": DETECTOR, "model": MODEL}
+    monkeypatch.setattr(cli, "run_detect", functools.partial(run_detect, **reader))
+    return _write_config(tmp_path, tmp_path / "data", detect_tile_px=300, **settings)
+
+
+def test_detect_lists_slices_and_resumes(tmp_path, monkeypatch, capsys):
+    cfg = _detect_setup(tmp_path, monkeypatch)
+    _run(cfg, "detect", "--slices", "1-2", "--no-ask")
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split() == ["slice", "nuclei", "dropped", "blurred", "tiles", "seconds"]
+    assert [ln.split()[0] for ln in lines[1:3]] == ["1", "2"]
+    assert lines[-1].startswith("detect (slices): 2 done, 0 up to date; cell files in ")
+    _run(cfg, "detect", "--slices", "1-2")
+    assert capsys.readouterr().out.splitlines()[-1].startswith("detect (slices): 0 done, 2 up")
+    cfg = _detect_setup(tmp_path, monkeypatch, detect_min_area_um2=12.0)
+    message = _error(cfg, "detect", "--slices", "1-2")
+    assert "detect_min_area_um2" in message and "overwrite" in message
+
+
+def test_detect_before_preprocess(tmp_path, monkeypatch):
+    cfg = _detect_setup(tmp_path, monkeypatch)
+    (tmp_path / "work" / "mask" / "2.png").unlink()
+    message = _error(cfg, "detect", "--slices", "1-2", "--no-ask")
+    assert message == "error: slice 2 has no tissue mask: run preprocess first"
+
+
+def test_detect_needs_the_classes_of_the_classifier(tmp_path, monkeypatch):
+    types = [
+        {"id": 1, "name": "Neuron", "colour": "#E69F00", "radius_um": [2, 15]},
+        {"id": 2, "name": "Glia", "colour": "#56B4E9", "radius_um": [1.5, 8]},
+    ]
+    cfg = _detect_setup(tmp_path, monkeypatch, cell_types=types)
+    message = _error(cfg, "detect", "--slices", "1-2")
+    assert message.startswith("error: cell_types lacks Astrocyte-like, Oligodendrocyte-like")
+
+
+def test_detect_asks_before_the_next_slice(tmp_path, monkeypatch, capsys):
+    cfg = _detect_setup(tmp_path, monkeypatch)
+    prompts = []
+
+    def answer(text):
+        prompts.append(text)
+        return "n"
+
+    monkeypatch.setattr("builtins.input", answer)
+    _run(cfg, "detect", "--slices", "1-2")
+    out = capsys.readouterr().out
+    assert prompts == ["Start slice 2? [y/N] "]
+    assert "slice 1 done: " in out and "1 slice(s) left" in out
+    assert out.splitlines()[-1].endswith(
+        "stopped, not started: 2; run the same command to continue"
+    )
+    assert "\n2 " not in out  # no row for the slice not started
+    monkeypatch.setattr("builtins.input", lambda text: "y")
+    _run(cfg, "detect", "--slices", "1-2")
+    assert capsys.readouterr().out.splitlines()[-1].startswith("detect (slices): 1 done, 1 up")
+
+
+def test_detect_without_a_terminal_stops_after_one_slice(tmp_path, monkeypatch, capsys):
+    cfg = _detect_setup(tmp_path, monkeypatch)
+
+    def no_terminal(text):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", no_terminal)
+    _run(cfg, "detect", "--slices", "1-2")
+    assert "stopped, not started: 2" in capsys.readouterr().out.splitlines()[-1]
+
+
+def test_detect_no_ask_never_asks(tmp_path, monkeypatch, capsys):
+    cfg = _detect_setup(tmp_path, monkeypatch)
+
+    def must_not_ask(text):
+        raise AssertionError("asked although --no-ask")
+
+    monkeypatch.setattr("builtins.input", must_not_ask)
+    _run(cfg, "detect", "--slices", "1-2", "--no-ask")
+    assert capsys.readouterr().out.splitlines()[-1].startswith("detect (slices): 2 done")

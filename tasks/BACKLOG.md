@@ -76,7 +76,7 @@ Conventions that apply to every task (not repeated below):
 | M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | Done | M7-00, M3-02 |
 | M7-04 | Work-dir layout and cell file I/O | store | Low | Done | M7-00, M3-01 |
 | M7-05 | Nucleus detection, tiled | detect | High | Done | M7-03, M7-04 |
-| M7-06 | `detect` stage and `brainrec detect` | detect | Medium | To do | M7-05, M4-04 |
+| M7-06 | `detect` stage and `brainrec detect` | detect | Medium | Done | M7-05, M4-04 |
 | M7-07 | 3D placement, cell layers and `cells` stage | cells | High | To do | M7-06 |
 | M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | To do | M7-07 |
 | M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | To do | M7-08 |
@@ -1087,7 +1087,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
     - The features are now measured at 2x, while M7-18 and the M7-19 rules used level 0. The `rules-v1` classifier that M7-06 needs (C13: every profile classified) must therefore take its reference groups from 2x features, for example by measuring the M7-18 cells again at 2x.
     - `det_conf` is NaN with InstanSeg, which gives no confidence per nucleus.
 
-#### M7-06 `detect` stage and `brainrec detect` · Medium · To do
+#### M7-06 `detect` stage and `brainrec detect` · Medium · Done
 - **Objective:** run detection per slice, resumable (C6, C7).
 - **Outputs:**
   - `run_detect` (one 2x pass per slide, resume per slice, overwrite guard, counts and time per slice);
@@ -1095,6 +1095,37 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-05, M4-04 (shared CLI file). **Files:** `src/brainrec/detect/stage.py`, `src/brainrec/pipeline/cli.py`.
 - **Acceptance:** a second run reads no pixels; changed settings need `--overwrite`.
 - **Tests:** `tests/unit/test_detect_stage.py`, `tests/unit/test_cli.py` (extended).
+- **Result (2026-11-08):**
+  - **Stage** (`detect/stage.py`): per slice, the mask of preprocess, `detect_slice`, classification, the radius limits of C14, then `save_profiles`.
+    - The manifest records per slice the source fingerprint, the mask hash, the cell-file fingerprint, and the counts and seconds.
+    - A slice is redone when one of these changed.
+    - The settings signature covers the C9 detection fields, the detector and its version, the classifier and the hash of its reference, and the type table.
+    - Other settings raise an error that names the changed fields, unless `--overwrite`.
+  - **Command:** `brainrec detect --slices A-B [--overwrite]` prints one row per slice: nuclei, dropped, blurred tiles, seconds. Without a mask it says to run preprocess first; a type table without the six classes is refused.
+  - **Type table:** `cell_types` (C14) in the config, validated: ids 1..n in order, unique names, radius limits.
+  - **Interim classifier rules-v1** (`detect/classify.py`, added to this task because C13 needs a class for every profile):
+    - the M7-19 rules on the 8 M7-18 groups, with soft group membership: probability of a class = summed weight of the groups whose rule gives it;
+    - nuclei of 10.5 µm or more are neurons; "Other" is never given.
+    - **Reference:** `scripts/rules_v1_reference.py` measures the M7-18 cells again at 2x, the way the detection does. It wrote `src/brainrec/detect/rules_v1.json` (2 KB, shipped with the code like a calibrated constant; its hash is in the stage signature).
+    - 2381 of 2795 M7-18 cells matched within 1.5 µm. The 2x reference puts 74% of them back into their own group: the groups overlap, as M7-18 showed.
+    - Against the M7-19 draft classes: the same class for 84% of 1360 draft points. Both are automatic, so this is consistency, not accuracy.
+    - Median confidence 0.78 (quartiles 0.62 and 0.91). The confidence is not calibrated (Proposed until M7-11).
+    - A first run of the script put the two extra crops of a slice into one box; the script now splits them, and the reference was rebuilt with it (same 2381 cells, group centres within 0.08).
+  - **Real run, slice 1** (`brainrec detect --slices 1`, end to end with InstanSeg and the shipped reference):
+    - 436,334 nuclei on 397 mm² of tissue (1099 per mm²); 4763 (1.1%) dropped by the radius limits;
+    - 990 s, that is 2.5 s per mm² as estimated in M7-05, so about 16 min per slice and about 39 h for 140 slices;
+    - cell file 48 MB; peak memory 4.1 GB.
+    - Classes: Neuron 19%, Astrocyte-like 34%, Oligodendrocyte-like 34%, Microglia-like 7%, Vessel-wall 6%. Median confidence 0.81.
+    - **Blur:** 664 of 2519 tiles (26%) are below the sharpness limit, holding 21% of the nuclei. The map (`<work>/spike/M7-06/sharpness_slice1.jpg`) shows compact patches with a very blurred core: real loss of focus in the scan, not noise around the limit. For review in M7-16.
+  - **Asking before each next slice** (owner, 2026-11-08, added after the first report):
+    - `run_detect` takes a `proceed` question that is asked after each finished slice while others remain; on "no" it stops, and `result.left` lists the slices not started.
+    - The command shows the finished slice's count and time, an estimate for the rest, and `Start slice N? [y/N]`. No answer (no terminal) means no; the same command later continues; `--no-ask` runs all.
+    - Slices already up to date are skipped without a question.
+  - **Tests:** 11 stage tests, 8 classifier tests, 6 CLI tests, 1 config test; full suite 383 passed; ruff and mypy clean.
+  - **Mutation check:** 17 deliberate faults, covering the classifier rules, the signature fields, resume, overwrite, radius limits, outline re-indexing, the manifest and the CLI check.
+    - 16 were caught at once.
+    - "Overwrite keeps the old per-slice state" was missed: the test helper rewrote the slide files, so every slice looked changed and was redone for the wrong reason. The helper now writes them once, and the fault is caught.
+    - 6 more faults in the asking logic, all caught: answer inverted, stopped slices not listed, a question after the last slice, no terminal taken as yes, any answer taken as yes, `--no-ask` ignored.
 
 ### Component: cells
 

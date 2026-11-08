@@ -9,6 +9,7 @@ from pathlib import Path
 class StageResult:
     done: list[int] = field(default_factory=list)  # ids processed in this run
     skipped: list[int] = field(default_factory=list)  # ids already up to date
+    left: list[int] = field(default_factory=list)  # ids not started: the run was stopped (M7-06)
 
 
 class StageExistsError(RuntimeError):

@@ -206,15 +206,25 @@ detect_slice(reader, mask, mask_downsample, cfg, detector) -> Nuclei
     # neighbour, centres on tissue only; measurements (detect/measure.py: measure_nuclei,
     # refine_patch on level-0 patches, has_nucleolus, sharpness). Nuclei = the C13 columns
     # without the class columns, plus tile_sharpness, n_blurred_tiles, n_refined
-classify(profiles: Profiles, model) -> Profiles          # class id, all class probabilities, confidence (decision 0006); "rules-v1" until M7-11
+classify(nuclei: Nuclei, model: RulesV1, class_names) -> Profiles   # implemented (M7-06), detect/classify.py:
+    # class probabilities in C14 order, class id = most probable, confidence = its probability
+    # (decision 0006); "rules-v1" until M7-11: soft membership in the 8 M7-18 groups, M7-19 rules per
+    # group; reference RulesV1.load() from detect/rules_v1.json (scripts/rules_v1_reference.py;
+    # kept in the code, owner 2026-11-08)
 # implemented (M7-02): detect/labels.py - Crop, Labels, CLASSES, candidate_centres, assign_split,
 #   crops_geojson, save_crops/load_crops, read_qupath(geojson, slice_id, mpp, crops, classes),
 #   load_labels(dir, crops, classes, mpp); detect/evaluate.py - Detections,
 #   match(truth_xy, det_xy, det_r, tol_um=3, rel=0.5) and
 #   evaluate(crops, labels, detections, classes, tol_um, rel, border_um=3) -> scores per split
-run_detect(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=False) -> StageResult
-    # C7; resumes per slice (like preprocess); tiles at 2x with overlap, a profile belongs to the tile
-    # holding its centre; nothing outside the mask; writes cells/{id}.npz and cells/{id}.json
+run_detect(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=False,
+           detector=None, model=None, proceed=None) -> StageResult   # implemented (M7-06), detect/stage.py
+    # proceed(finished_id, counts, ids_still_to_do) -> bool is asked after each finished slice
+    # while others remain (owner, 2026-11-08); False stops the run, the rest is in result.left
+    # C7; per slice: mask from preprocess (FileNotFoundError without it), detect_slice, classify,
+    # radius limits of C14, save_profiles. Resumes per slice: redone when the source fingerprint,
+    # the mask hash or the cell file changed. Signature: C9 detect fields, detector and version,
+    # classifier and its reference hash, type table; other settings: StageExistsError unless
+    # overwrite. detector/model default to load_detector(cfg.detect_method) and rules-v1
 
 # cells                              # M7; file contracts fixed in M7-00 (C15 to C18)
 align_local(fixed: Profiles, moving: Profiles, t_pair: Transform2D, cfg) -> LocalField
@@ -283,7 +293,9 @@ brainrec --config C volume --slices A-B [--overwrite] [--unregistered]
     # registered, tissue-only (C8, C11) from load_chained and the masks; --unregistered = M2 mode
 brainrec --config C qc --slices A-B [--overwrite]         # implemented (M4-04): table per pair,
     # thresholds, flagged pairs; exit status 0 also with flagged pairs
-brainrec --config C detect --slices A-B [--overwrite]     # M7-06, interim: cell profiles per slice
+brainrec --config C detect --slices A-B [--overwrite] [--no-ask]   # implemented (M7-06): cell files
+    # per slice; asks "Start slice N? [y/N]" after each slice (no terminal = no; --no-ask runs all);
+    # table of nuclei, dropped (radius limits), blurred tiles and seconds per slice
 brainrec --config C cells --slices A-B [--overwrite]      # M7-07: link, place, layers, table, density
 brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512]   # viewer on port+1
     # --slices: A-B or N. User errors (config, slice range, missing step, other settings without
@@ -438,7 +450,8 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
 - **Ids are stable and never reused.** There is no "unclassified" (decision 0006). Id 0 is reserved and never written.
 - **Colours:** colour-blind safe (Okabe-Ito).
 - **Proportions:** spheres by default (Q26); `proportions` allows a fixed axis ratio per class.
-- **Radius limits:** guards against implausible profiles; drops are logged.
+- **Radius limits:** guards against implausible profiles. The detect stage drops profiles whose radius lies outside the limits of their class (after classification), logs them and records the count per slice in the manifest (M7-06).
+- **Config (M7-06):** `cell_types` is a list of `{id, name, colour, proportions, radius_um}`. The ids must be 1, 2, 3, ... in order (the class id indexes the probabilities), and the names must be unique. The classifier rules-v1 needs the six names of decision 0006.
 
   | id | name | colour | proportions | radius µm |
   |---|---|---|---|---|
@@ -521,6 +534,7 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
 **Extensions of C6 and C9 (fixed with C13 to C18):**
 - **C6:**
   - manifest key `detect`: per slice, like `preprocess`. The signature holds the detection fields of C9, the detector and model versions and the classifier; each done slice has its source fingerprint.
+    - As implemented (M7-06): `{"signature": {...}, "slices": {"<id>": {"source": fingerprint, "mask_sha256", "cells": fingerprint of the npz, "n_profiles", "n_dropped_radius", "n_tiles", "n_blurred_tiles", "seconds"}}}`.
   - manifest key `cells`: per pair for `pair_{k}` (key: hashes of both cell files, the pair transform and the alignment settings, like `register`), and per range for placement, layers, table, QuPath and density (signature with the range).
 - **C9:** new fields with their defaults:
 

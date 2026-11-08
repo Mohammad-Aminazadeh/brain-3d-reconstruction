@@ -1,5 +1,5 @@
-"""Interim CLI until `brainrec run` arrives in M5 (M2-08, M3-10, M4-04): `preprocess`,
-`register`, `qc` and `volume` for a slice range, and `serve`.
+"""Interim CLI until `brainrec run` arrives in M5 (M2-08, M3-10, M4-04, M7-06): `preprocess`,
+`register`, `qc`, `volume` and `detect` for a slice range, and `serve`.
 
 Mistakes in the input, the settings or the environment end with a one-line `error: ...` and exit
 status 1; anything else is a bug and keeps its traceback.
@@ -18,6 +18,8 @@ import zarr
 from pydantic import ValidationError
 
 from brainrec.catalog import Catalog, ProjectConfig
+from brainrec.detect.classify import RULE_CLASSES
+from brainrec.detect.stage import run_detect
 from brainrec.preprocess import run_preprocess
 from brainrec.qc import run_qc
 from brainrec.registration import PairResult, Transform2D
@@ -62,6 +64,14 @@ def _parser() -> argparse.ArgumentParser:
     stage("qc", "scores, overlays and flags of registered pairs", "redo pairs of other settings")
     v = stage("volume", "registered, tissue-only volume", "replace a volume of other inputs")
     v.add_argument("--unregistered", action="store_true", help="stack whole scans unaligned (M2)")
+    d = stage(
+        "detect", "nuclei per slice, measured and classified", "redo slices of other settings"
+    )
+    d.add_argument(
+        "--no-ask",
+        action="store_true",
+        help="run all slices without asking before each next one (a slice takes about 16 min)",
+    )
     s = sub.add_parser("serve", help="serve the volume and open it in a local Neuroglancer")
     s.add_argument("--port", type=int, default=8000, help="data port; the viewer uses port+1")
     s.add_argument(
@@ -187,6 +197,49 @@ def _volume(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None
     print(out)
 
 
+def _ask_next(finished: int, counts: dict, rest: list[int]) -> bool:
+    """Ask on the terminal whether to start the next slice; no answer (no terminal) is no."""
+    hours = counts["seconds"] * len(rest) / 3600
+    print(
+        f"slice {finished} done: {counts['n_profiles']} nuclei in {counts['seconds']:.0f} s. "
+        f"{len(rest)} slice(s) left (about {hours:.1f} h).",
+        flush=True,
+    )
+    try:
+        answer = input(f"Start slice {rest[0]}? [y/N] ")
+    except EOFError:
+        answer = ""
+    return answer.strip().lower() in ("y", "yes")
+
+
+def _detect(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
+    catalog = _catalog(cfg, args.slices)
+    names = [t.name for t in cfg.cell_types]
+    missing = [c for c in RULE_CLASSES if c not in names]
+    if missing:
+        raise CliError(
+            f"cell_types lacks {', '.join(missing)}, which the classifier rules-v1 gives"
+        )
+    manifest = Manifest(work.manifest)
+    proceed = None if args.no_ask else _ask_next
+    result = run_detect(catalog, work, cfg, manifest, overwrite=args.overwrite, proceed=proceed)
+    slices = (manifest.get("detect") or {}).get("slices", {})
+    print(f"{'slice':<7}{'nuclei':>9}{'dropped':>9}{'blurred tiles':>15}{'seconds':>9}")
+    for ref in catalog.slices:
+        if ref.id in result.left:
+            continue
+        row = slices[str(ref.id)]
+        blurred = f"{row['n_blurred_tiles']}/{row['n_tiles']}"
+        print(f"{ref.id:<7}{row['n_profiles']:>9}{row['n_dropped_radius']:>9}{blurred:>15}"
+              f"{row['seconds']:>9.0f}")  # fmt: skip
+    note = f"; cell files in {work.cells_dir}"
+    if result.left:
+        left = result.left
+        which = ", ".join(map(str, left)) if len(left) <= 6 else f"{left[0]} ... {left[-1]}"
+        note += f"; stopped, not started: {which}; run the same command to continue"
+    _summary("detect", result, "slices", note)
+
+
 def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     if not work.volume.exists():
         raise CliError(f"no volume at {work.volume}: run `brainrec volume` first")
@@ -210,6 +263,7 @@ COMMANDS = {
     "register": _register,
     "qc": _qc,
     "volume": _volume,
+    "detect": _detect,
     "serve": _serve,
 }
 

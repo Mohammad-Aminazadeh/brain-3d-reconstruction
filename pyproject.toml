@@ -34,6 +34,9 @@ brainrec = "brainrec.pipeline.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"brainrec.detect" = ["rules_v1.json"]  # reference of the interim classifier (M7-06)
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
