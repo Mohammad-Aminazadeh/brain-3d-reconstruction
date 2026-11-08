@@ -291,9 +291,15 @@ neuroglancer_state(volume_url, ome) -> dict   # RGB layer; OME axis c mapped to 
     # implemented (M3-12): shader draws pure white (background, C11) transparent, every other voxel
     # in its RGB colour; panel backgrounds black (crossSection/projectionBackgroundColor);
     # displayDimensions x, y, z, so the "xy" panel shows the section plane (axes are stored z, y, x)
-    # M7-08 (Proposed): optional arguments cell_layers and density_layers; existing calls keep working.
-    # One annotation layer per type (colour, size and confidence sliders), an opacity control for the
-    # tissue layer down to fully transparent, density layers with a colour map
+    # implemented (M7-08): optional cell_layers: list[CellLayer(name, url, colour)] and
+    # tissue_opacity (0 to 1); existing calls unchanged. One annotation layer per class after the
+    # tissue, shader cell_shader(colour): colour picker, opacity, min_confidence slider, checkbox
+    # hide_blurred (prop_blurred() is a uint). No size control: Neuroglancer draws ellipsoids at
+    # their stored radii. The tissue fades with its own Opacity slider. layout in LAYOUTS (adds
+    # "xy-3d"); ValueError otherwise. density_layers follow with the density maps (M7-15).
+    # The state sets the global dimensions to the volume's voxel size (one wheel step = one
+    # section) and, with position_um (volume µm), the start position. The data server sends
+    # Cache-Control: no-cache, so browsers recheck files that a stage rewrote
 launch_local_viewer(state, port=0) -> neuroglancer.Viewer   # served from 127.0.0.1; caller keeps it alive (weak refs)
 GET /volume.zarr/{path}                # Zarr metadata and shard files
 GET /tile/{z}/{level}/{x}/{y}          # post-MVP, native-resolution tile
@@ -310,7 +316,9 @@ brainrec --config C detect --slices A-B [--overwrite] [--no-ask]   # implemented
     # table of nuclei, dropped (radius limits), blurred tiles and seconds per slice
 brainrec --config C cells --slices A-B [--overwrite]      # M7-07 (implemented: place, layers; table of
     # cells per class); later link (M7-13), table, density
-brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512]   # viewer on port+1
+brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512] [--tissue-opacity F]
+    # viewer on port+1; adds every cells/layer_<name> that exists (M7-08) and starts on the
+    # plane of the first slice with cells
     # --slices: A-B or N. User errors (config, slice range, missing step, other settings without
     # --overwrite, drive not connected) end with one line `error: ...`, exit status 1; a failed pair
     # is not an error: `register` names it in a warning line and exits 0 (M3-13);
@@ -412,6 +420,10 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - Tissue voxels that are exactly pure white are stored as 254.
 - The canvas is the bounding box of all warped, enlarged masks, aligned to the pyramid grid.
 - The viewer shows pure white as transparent (decision 10).
+- **Voxel centres in the metadata** (M7-08, approved by the owner 2026-11-08): voxel i of a level covers [i, i + 1) × scale from the canvas origin (C1), so its centre is (i + 0.5) × scale.
+  - OME-Zarr places a voxel's centre at i × scale + translation. Each level therefore carries a translation of half a voxel in z, y and x next to its scale (`volume.builder.ome_metadata`).
+  - Without it, viewers drew every plane half a section too deep, so the cells of a slice appeared on the next slice's image.
+  - A resumed build rewrites the metadata, which repairs older volumes. The volume of slices 1 to 10 was patched in place (metadata only; backup in `spike/M7-08/`).
 
 **C12 Acceptance and failure rules per pair.**
 - **`features`:** pass-2 inliers ≥ `reg_min_inliers`, rms ≤ `reg_max_rms_um`, **and** mask IoU of the result ≥ `boundary_min_iou`. The last condition was added in M3-07: without it, an unrelated pair was accepted with 47 consistent but spurious matches (scale 0.39, IoU 0.09). Real pairs 1 to 10 all pass (lowest IoU 0.825).

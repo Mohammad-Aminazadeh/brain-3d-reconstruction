@@ -11,6 +11,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 import yaml
@@ -25,7 +26,14 @@ from brainrec.preprocess import run_preprocess
 from brainrec.qc import run_qc
 from brainrec.registration import PairResult, Transform2D
 from brainrec.registration.chain import load_chained, run_register
-from brainrec.serve import create_app, hosted_url, launch_local_viewer, neuroglancer_state
+from brainrec.serve import (
+    LAYOUTS,
+    CellLayer,
+    create_app,
+    hosted_url,
+    launch_local_viewer,
+    neuroglancer_state,
+)
 from brainrec.store import Manifest, StageExistsError, StageResult, WorkDir
 from brainrec.volume import VolumeExistsError, VolumeSpec, build_volume
 
@@ -79,8 +87,14 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--layout",
         default="xy",
-        choices=["xy", "xz", "yz", "3d", "4panel"],
-        help="initial panel layout (4panel is the heaviest)",
+        choices=list(LAYOUTS),
+        help="initial panel layout (xy-3d: section and 3D side by side; 4panel is the heaviest)",
+    )
+    s.add_argument(
+        "--tissue-opacity",
+        type=float,
+        default=None,
+        help="start opacity of the tissue (0 = transparent, 1 = opaque); also a slider in the viewer",
     )
     s.add_argument("--gpu-memory-mb", type=int, default=512)
     return p
@@ -255,18 +269,55 @@ def _cells(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
           f"{sum(counts.values())} cells, each profile its own cell until linking (M7-13)")  # fmt: skip
 
 
+def _start(root: zarr.Group, manifest: Manifest) -> tuple[float, float, float] | None:
+    """Start of the view (volume µm): the centre of the plane of the first slice with cells."""
+    layers = dict((manifest.get("cells") or {}).get("layers") or {})
+    ids = dict(layers.get("signature") or {}).get("ids")
+    attrs: dict[str, Any] = dict(root.attrs)
+    slice_ids = dict(attrs.get("brainrec") or {}).get("slice_ids", [])
+    if not ids or ids[0] not in slice_ids or "0" not in root:
+        return None
+    transforms = attrs["ome"]["multiscales"][0]["datasets"][0]["coordinateTransformations"]
+    _, sz, sy, sx = next(t["scale"] for t in transforms if t["type"] == "scale")
+    level0 = root["0"]
+    if not isinstance(level0, zarr.Array):
+        return None
+    _, _, h, w = level0.shape
+    return (w * sx / 2, h * sy / 2, (slice_ids.index(ids[0]) + 0.5) * sz)
+
+
 def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     if not work.volume.exists():
         raise CliError(f"no volume at {work.volume}: run `brainrec volume` first")
     ome = zarr.open_group(str(work.volume), mode="r").attrs.get("ome")
     if not isinstance(ome, dict):
         raise CliError(f"{work.volume} has no OME-Zarr 0.5 metadata; rebuild it")
+    if args.tissue_opacity is not None and not 0.0 <= args.tissue_opacity <= 1.0:
+        raise CliError("--tissue-opacity must lie between 0 and 1")
+    base = f"http://127.0.0.1:{args.port}"
+    root = zarr.open_group(str(work.volume), mode="r")
+    cells = [
+        CellLayer(t.name, f"{base}/{work.cell_layer(t.name).relative_to(work.root).as_posix()}",
+                  t.colour)
+        for t in cfg.cell_types
+        if (work.cell_layer(t.name) / "info").exists()
+    ]  # fmt: skip
     state = neuroglancer_state(
-        f"http://127.0.0.1:{args.port}/{work.volume.name}",
+        f"{base}/{work.volume.name}",
         ome,
         layout=args.layout,
         gpu_memory_mb=args.gpu_memory_mb,
+        cell_layers=cells,
+        tissue_opacity=args.tissue_opacity,
+        position_um=_start(root, Manifest(work.manifest)) if cells else None,
     )
+    if cells:
+        print(f"Cell layers: {', '.join(c.name for c in cells)} (controls in each layer's panel)")
+        ids = (Manifest(work.manifest).get("cells") or {}).get("layers", {}).get("signature", {})
+        ids = ids.get("ids", [])
+        if ids:
+            print(f"Cells for slices {ids[0]}-{ids[-1]}; the view starts on slice {ids[0]}. "
+                  "Mouse wheel: one section per step.")  # fmt: skip
     viewer = launch_local_viewer(state, args.port + 1)  # keep referenced while serving
     print("Viewer (open in Chrome):", viewer, flush=True)
     print("Fallback, public Neuroglancer build:", hosted_url(state), flush=True)

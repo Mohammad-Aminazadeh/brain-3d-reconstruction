@@ -478,3 +478,36 @@ def test_cells_errors_are_one_line(tmp_path):
     assert _error(cfg, "cells", "--slices", "1-2") == (
         "error: slices [1] have no cell file: run `brainrec detect`"
     )
+
+
+def test_serve_adds_the_cell_layers_found(tmp_path, monkeypatch, capsys):
+    from tests.unit.test_cells_stage import make_setup
+
+    _, work, *_ = make_setup(tmp_path)
+    cfg = _write_config(tmp_path, tmp_path / "data", z_spacing_um=5.0)
+    _run(cfg, "cells", "--slices", "1-2")
+    zarr.open_group(str(work.volume), mode="a").attrs["ome"] = {"multiscales": [{"datasets": [
+        {"path": "0", "coordinateTransformations": [{"type": "scale",
+                                                     "scale": [1.0, 5.0, 0.88, 0.88]}]}]}]}  # fmt: skip
+    zarr.open_group(str(work.volume), mode="a").create_array("0", shape=(3, 2, 100, 200),
+                                                             dtype="uint8")  # fmt: skip
+    started = {}
+    monkeypatch.setattr(cli, "launch_local_viewer", lambda state, port: started.update(s=state))
+    monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port: None)
+    capsys.readouterr()
+    _run(cfg, "serve", "--port", "8100", "--layout", "xy-3d", "--tissue-opacity", "0.2")
+    layers = started["s"]["layers"]
+    assert [x["name"] for x in layers] == ["brain", "Neuron", "Astrocyte-like",
+                                           "Oligodendrocyte-like", "Microglia-like",
+                                           "Vessel-wall", "Other"]  # fmt: skip
+    assert layers[1]["source"] == "precomputed://http://127.0.0.1:8100/cells/layer_neuron"
+    assert layers[0]["opacity"] == 0.2 and started["s"]["layout"] == "xy-3d"
+    assert '#uicontrol vec3 colour color(default="#E69F00")' in layers[1]["shader"]
+    out = capsys.readouterr().out
+    assert "Cell layers: Neuron, Astrocyte-like" in out
+    assert "Cells for slices 1-2; the view starts on slice 1. Mouse wheel: one section" in out
+    # one wheel step is one section; the view starts in the middle of slice 1's plane
+    assert started["s"]["dimensions"]["z"] == [pytest.approx(5e-6), "m"]
+    assert started["s"]["position"] == [pytest.approx(100.0), pytest.approx(50.0), 0.5]
+    message = _error(cfg, "serve", "--tissue-opacity", "2")
+    assert message == "error: --tissue-opacity must lie between 0 and 1"

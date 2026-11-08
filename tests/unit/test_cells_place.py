@@ -104,3 +104,19 @@ def test_ac12_blobs_sit_on_the_transformed_true_centres():
     back = t.inverse().apply(placed.centre[:, :2] + [-120.0, 35.0])  # slice frame again
     px = np.floor(back / (32 * UM0)).astype(int)
     assert (mask[px[:, 1], px[:, 0]] > 0).all()  # no centre outside the mask
+
+
+def test_cells_lie_at_the_voxel_centres_of_the_volume_metadata():
+    """C16 against C11: a cell at the centre of canvas pixel i of plane k lies where the volume's
+    OME metadata puts the centre of that voxel (scale x index + translation)."""
+    from brainrec.volume.builder import ome_metadata
+
+    ome = ome_metadata(5.0, (0.2205, 0.2205), [4, 8])
+    frame = _frame({1: Transform2D.identity(), 2: Transform2D.identity()})
+    for d in ome["multiscales"][0]["datasets"]:
+        t = {x["type"]: x[x["type"]] for x in d["coordinateTransformations"]}
+        k, i = 1, 37  # plane of slice 2, pixel 37
+        z_ome = k * t["scale"][1] + t["translation"][1]
+        x_ome = i * t["scale"][3] + t["translation"][3]
+        assert z_ome == pytest.approx(frame.z_um(2))
+        assert x_ome == pytest.approx((i + 0.5) * t["scale"][3])  # C1 pixel centre, canvas µm

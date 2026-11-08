@@ -140,3 +140,35 @@ def test_mixed_pixel_sizes_rejected(tmp_path):
 
     with pytest.raises(ValueError, match="pixel sizes"):
         _build(tmp_path, factory=OddFactory(SIZES))
+
+
+def _transforms(ome, level):
+    return {
+        t["type"]: t[t["type"]]
+        for t in ome["multiscales"][0]["datasets"][level]["coordinateTransformations"]
+    }
+
+
+def test_voxel_centres_are_half_a_voxel_in(tmp_path):
+    """OME-Zarr puts voxel i's centre at i x scale + translation; the volume's voxel i covers
+    [i, i + 1) x scale (C1, C11), so the translation is half a voxel in z, y and x (M7-08:
+    without it the viewer drew each plane half a section off, under the next slice's cells)."""
+    ome = zarr.open_group(str(_build(tmp_path)), mode="r").attrs["ome"]
+    for level in range(3):
+        t = _transforms(ome, level)
+        assert t["translation"] == [0.0] + [v / 2 for v in t["scale"][1:]]
+    assert _transforms(ome, 0)["translation"] == [0.0, 3.5, 0.125, 0.125]
+
+
+def test_resume_repairs_metadata_of_older_volumes(tmp_path):
+    out = _build(tmp_path)
+    g = zarr.open_group(str(out), mode="r+")
+    old = json.loads(json.dumps(dict(g.attrs["ome"])))
+    for d in old["multiscales"][0]["datasets"]:  # as written before M7-08: scale only
+        d["coordinateTransformations"] = d["coordinateTransformations"][:1]
+    g.attrs["ome"] = old
+    f2 = FakeFactory(SIZES)
+    _build(tmp_path, factory=f2)
+    assert sum(s.reads for s in f2.opened) == 0  # nothing is rebuilt
+    ome = zarr.open_group(str(out), mode="r").attrs["ome"]
+    assert _transforms(ome, 1)["translation"][1] == 3.5

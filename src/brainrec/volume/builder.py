@@ -133,7 +133,26 @@ def _create(
             fill_value=255,
             compressors=ZstdCodec(level=3),
         )
-    root.attrs["ome"] = {
+    root.attrs["ome"] = ome_metadata(spec.z_spacing_um, mpp, factors)
+
+
+def ome_metadata(z_spacing_um: float, mpp: tuple[float, float], factors: list[int]) -> dict:
+    """OME-Zarr 0.5 metadata of the pyramid: axes c, z, y, x (µm); per level a scale and a
+    translation of half a voxel. OME-Zarr places voxel i's centre at i x scale + translation;
+    the volume's voxel i covers [i, i + 1) x scale from the canvas origin (C1, C11), so its
+    centre is (i + 0.5) x scale. Without the translation viewers draw the image half a voxel
+    off: in z half a section, so cells (C16) appeared on the next section (found in M7-08)."""
+    datasets = []
+    for k, f in enumerate(factors):
+        scale = [1.0, z_spacing_um, mpp[1] * f, mpp[0] * f]
+        datasets.append({
+            "path": str(k),
+            "coordinateTransformations": [
+                {"type": "scale", "scale": scale},
+                {"type": "translation", "translation": [0.0] + [v / 2 for v in scale[1:]]},
+            ],
+        })  # fmt: skip
+    return {
         "version": "0.5",
         "multiscales": [
             {
@@ -144,21 +163,16 @@ def _create(
                     {"name": "y", "type": "space", "unit": "micrometer"},
                     {"name": "x", "type": "space", "unit": "micrometer"},
                 ],
-                "datasets": [
-                    {
-                        "path": str(k),
-                        "coordinateTransformations": [
-                            {
-                                "type": "scale",
-                                "scale": [1.0, spec.z_spacing_um, mpp[1] * f, mpp[0] * f],
-                            }
-                        ],
-                    }
-                    for k, f in enumerate(factors)
-                ],
+                "datasets": datasets,
             }
         ],
     }
+
+
+def level_scale(ome: dict, level: int = 0) -> list[float]:
+    """The scale (c, z, y, x) of a pyramid level from OME metadata, found by type."""
+    transforms = ome["multiscales"][0]["datasets"][level]["coordinateTransformations"]
+    return next(t["scale"] for t in transforms if t["type"] == "scale")
 
 
 def _level_array(root: zarr.Group, k: int) -> tuple[zarr.Array, tuple[int, int]]:
@@ -227,6 +241,8 @@ def build_volume(
             "slice_ids": ids,
             "offsets_base_px": {str(i): list(o) for i, o in offsets.items()},
         }
+    # metadata is rewritten on resume too, so volumes from before M7-08 get the half-voxel offset
+    root.attrs["ome"] = ome_metadata(spec.z_spacing_um, mpp, factors)
 
     for zi, s in enumerate(catalog.slices):
         if s.id in done:
@@ -352,6 +368,8 @@ def _build_registered(
             "mask_sha256": m_hash,
             "slice_to_reference_um": {str(i): transforms[i].matrix.tolist() for i in ids},
         }
+    # metadata is rewritten on resume too, so volumes from before M7-08 get the half-voxel offset
+    root.attrs["ome"] = ome_metadata(spec.z_spacing_um, mpp, factors)
 
     # Pass 2: per slice, level and shard-sized tile (M3-09b to f).
     for zi, s in enumerate(catalog.slices):

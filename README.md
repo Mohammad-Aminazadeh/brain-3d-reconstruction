@@ -36,7 +36,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 ## Current development status
 
-**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). M7-18 appearance groups done (2026-11-08): six appearance classes confirmed by the owner. M7-19 draft labels (1603 points, not ground truth) ready for expert correction in QuPath. Cell contracts (M7-00) fixed and approved. Synthetic nuclei and 3D cells (M7-03) and the cell file (M7-04) done. Nucleus detection over a whole slice (M7-05) and the `detect` stage with the interim classifier rules-v1 (M7-06) done. Cells placed in 3D with one layer per class (M7-07) done. Next: M7-08 cell layers in the viewer.**
+**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). M7-18 appearance groups done (2026-11-08): six appearance classes confirmed by the owner. M7-19 draft labels (1603 points, not ground truth) ready for expert correction in QuPath. Cell contracts (M7-00) fixed and approved. Synthetic nuclei and 3D cells (M7-03) and the cell file (M7-04) done. Nucleus detection over a whole slice (M7-05) and the `detect` stage with the interim classifier rules-v1 (M7-06) done. Cells placed in 3D with one layer per class (M7-07) and the cell layers in the viewer (M7-08) done. Next: M7-09 real run of slices 1 to 10 for the owner's review.**
 
 | Item | Status |
 |---|---|
@@ -82,6 +82,12 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 - `brainrec serve --layout 4panel` opens all four panels (heavier); the default is a single XY panel. Chrome needs hardware acceleration on (`chrome://gpu` shows "WebGL: Hardware accelerated").
 - Everything outside the tissue (pure white, C11) is transparent, so the black panel shows through and the tissue stands out. This also applies to the unregistered M2 volume, whose glass is pure white too.
 - The data is read from a USB hard disk (about 27 chunks/s), so full-resolution areas take a few seconds to fill in.
+- **Cells** (after `brainrec cells`): `serve` adds one layer per class, named after the class. Click a layer's name at the top to show or hide it. To open its panel, click the name with Ctrl held, or right-click it. The panel offers:
+  - **colour** and **opacity**;
+  - **min_confidence**: hides cells whose class is less certain;
+  - **hide_blurred**: hides cells from out-of-focus areas.
+- **Depth:** the mouse wheel moves one section per step. `serve` starts the view on the first slice that has cells and prints which slices have them.
+- **Transparent tissue:** in the panel of the `brain` layer, the **Opacity** slider fades the tissue down to fully transparent, so only the cells remain. `--tissue-opacity 0.3` sets the start value, and `--layout xy-3d` shows the section and the 3D view side by side.
 
 ## Documentation
 

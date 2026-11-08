@@ -13,7 +13,8 @@ Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06)
 - **M7-02 done (2026-11-08):** 20 label crops, QuPath files, labelling guide, evaluation code. Classification rules changed by the owner (decision 0006): every cell classified by appearance with a confidence; new task M7-18 (appearance groups) before the labelling. Next: M7-18.
 - **M7-18, M7-19, M7-00, M7-03, M7-04 and M7-05 done (2026-11-08):** class list confirmed, draft labels for the expert, cell contracts fixed, synthetic test data, cell file, nucleus detection over a whole slice.
 - **M7-06 done (2026-11-08):** `detect` stage and `brainrec detect`, with the interim classifier rules-v1 (reference rebuilt from 2x measurements); it asks before each next slice.
-- **M7-07 done (2026-11-08):** cells placed in the volume frame, one layer per class, `brainrec cells`; AC12 passed. Next: M7-08 (cell layers in the viewer).
+- **M7-07 done (2026-11-08):** cells placed in the volume frame, one layer per class, `brainrec cells`; AC12 passed.
+- **M7-08 done (2026-11-08):** cell layers in `brainrec serve` with colour, opacity, confidence and blur controls; tissue opacity. Next: M7-09 (real run of slices 1 to 10, owner review).
 - **New goal (owner, 2026-11-05/06):** cells (later vessels and other structures) as 3D objects inside a volume that can be made transparent. This adds milestone M7 before M5 (section 10).
 - **Prerequisites:** none of the new tasks is needed before M4-04 or M4-05, and no done task has to be redone.
 - **Open inputs:** section thickness (the owner will supply it) and the supervisor's answers (`docs/REQUIREMENTS.md` section 6.2).
@@ -325,7 +326,7 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 | 7 | M7-05 nucleus detection (done 2026-11-08) | Tests |
 | 8 | M7-06 `detect` stage (done 2026-11-08) | Tests |
 | 9 | M7-07 placement, layers, `cells` stage (done 2026-11-08, AC12 passed) | **AC12** |
-| 10 | M7-08 viewer | Tests, owner |
+| 10 | M7-08 viewer (done 2026-11-08; the owner's look follows in M7-09) | Tests, owner |
 | 11 | **M7-09** real run, one type: **first 3D cells** | Owner review |
 | 12 | M7-16 detection QC | Tests |
 | 13 | M7-12 local alignment at cell scale | Tests, recurrence report |

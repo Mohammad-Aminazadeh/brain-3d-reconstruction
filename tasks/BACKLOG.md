@@ -78,7 +78,7 @@ Conventions that apply to every task (not repeated below):
 | M7-05 | Nucleus detection, tiled | detect | High | Done | M7-03, M7-04 |
 | M7-06 | `detect` stage and `brainrec detect` | detect | Medium | Done | M7-05, M4-04 |
 | M7-07 | 3D placement, cell layers and `cells` stage | cells | High | Done | M7-06 |
-| M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | To do | M7-07 |
+| M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | Done | M7-07 |
 | M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | To do | M7-08 |
 | M7-10 | Detection accuracy | detect | Medium | To do | M7-02, M7-18 (+ labels), M7-09 |
 | M7-11 | Cell classes by appearance | detect | High | To do | M7-10 |
@@ -1198,7 +1198,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: serve
 
-#### M7-08 Viewer: cell layers, sliders, tissue opacity · Medium · To do
+#### M7-08 Viewer: cell layers, sliders, tissue opacity · Medium · Done
 - **Objective:** F17 in the browser.
 - **Outputs:** `neuroglancer_state(..., cell_layers=None, density_layers=None)`; existing calls keep working. The new arguments add:
   - one annotation layer per type (colour, size and confidence sliders in the layer panel);
@@ -1207,6 +1207,33 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-07. **Files:** `src/brainrec/serve/app.py`, `src/brainrec/pipeline/cli.py` (serve finds the layers).
 - **Acceptance:** the state is accepted by Neuroglancer's parser; the layers and controls are present.
 - **Tests:** `tests/unit/test_serve.py` (extended).
+- **Result (2026-11-08):**
+  - **State:** `neuroglancer_state(..., cell_layers=[CellLayer(name, url, colour)], tissue_opacity=None)`; without them the state is unchanged.
+    - One annotation layer per class after the tissue.
+    - Controls in each layer's panel: colour (class colour of C14 as default), opacity, `min_confidence` slider, `hide_blurred` checkbox.
+    - The shader's property types were checked against the Neuroglancer source shipped with the package (2.41.2): `float32` gives `float`, `uint8` gives `uint`. The checkbox control exists there.
+  - **Not done as planned:**
+    - **No size slider.** Neuroglancer draws ellipsoids at their stored radii, and its annotation shaders have no size setting for them. Opacity and the blur switch were added instead.
+    - **`density_layers`** moves to M7-15, when density maps exist.
+  - **Tissue:** fades with its own Opacity slider down to 0; `--tissue-opacity` sets the start value; new layout `xy-3d`.
+  - **Command:** `brainrec serve` adds every `cells/layer_<name>` that exists and lists them.
+  - **Live check (server side):** `brainrec serve` on the real work directory found the 6 layers of slice 1 and served their info and shard files (partial reads) and the viewer page.
+    - Whether Chrome compiles the shader and draws the cells can only be seen in the browser: the owner checks it in M7-09.
+  - **Tests:** 7 viewer tests and 1 CLI test, plus 5 regression tests after the owner check; full suite 416 passed; ruff and mypy clean.
+  - **Mutation check:** 6 deliberate faults, all caught (blur switch, tissue opacity, source prefix, layout check, layers not found, layers not passed).
+  - **Owner check, two faults found and fixed (2026-11-08):**
+    1. **The blobs did not sit on the nuclei.**
+       - Cause: the volume's OME metadata put voxel centres half a voxel off (C11), so Neuroglancer drew each plane half a section deep. Slice 1's cells appeared on slice 2's image.
+       - My first answer to the owner was wrong: I had checked the positions against the volume data, not in the viewer.
+       - Found with headless-Chrome screenshots of the viewer, matched against the volume data: at the cells' depth the viewer showed plane 2 (match 0.89 against 0.12 for plane 1).
+       - Fix (owner's choice): the builder writes a half-voxel translation per level, a resumed build repairs older volumes, and the volume of slices 1 to 10 was patched (metadata only, backup kept).
+       - After the fix, the view at that depth matches plane 1 (0.76) and the blobs sit on the nuclei.
+       - Chrome had kept the old metadata in its cache, so the data server now sends `Cache-Control: no-cache`.
+    2. **No blobs in the 2D panel.**
+       - Cause: the viewer took its units from the cell layers (1 µm), so one wheel step moved 1 µm, while the cells reach only about 3 µm around the middle of their 5 µm section.
+       - Fix: the state uses the volume's voxel size as units (one wheel step = one section) and starts on the first slice with cells.
+       - Checked in screenshots of the exact serve state: blobs on the nuclei at the start, none one section deeper while only slice 1 has cells.
+    - Regression tests: the metadata translation per level, its repair on resume, cells against voxel centres (C16 against C11), voxel units and start position, revalidation header. The first two catch a planted copy of fault 1.
 
 ### Component: qc
 

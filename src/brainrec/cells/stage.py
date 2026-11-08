@@ -44,11 +44,12 @@ def volume_frame(work: WorkDir) -> VolumeFrame:
     if meta.get("mode") != "registered":
         raise CellsInputError("the volume is not registered: run `brainrec volume` without "
                               "--unregistered")  # fmt: skip
-    scale = attrs["ome"]["multiscales"][0]["datasets"][0]["coordinateTransformations"][0]
+    transforms = attrs["ome"]["multiscales"][0]["datasets"][0]["coordinateTransformations"]
+    scale = next(t["scale"] for t in transforms if t["type"] == "scale")
     return VolumeFrame(
         slice_ids=tuple(int(i) for i in meta["slice_ids"]),
         origin_um=(float(meta["canvas_origin_um"][0]), float(meta["canvas_origin_um"][1])),
-        z_spacing_um=float(scale["scale"][1]),  # axes c, z, y, x
+        z_spacing_um=float(scale[1]),  # axes c, z, y, x
         transforms={
             int(k): Transform2D.from_matrix(np.array(m))
             for k, m in meta["slice_to_reference_um"].items()
