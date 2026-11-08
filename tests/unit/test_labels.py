@@ -6,12 +6,14 @@ import pytest
 from brainrec.detect.labels import (
     CLASSES,
     Crop,
+    Labels,
     assign_split,
     candidate_centres,
     crops_geojson,
     far_enough,
     load_crops,
     load_labels,
+    points_geojson,
     read_qupath,
     save_crops,
 )
@@ -139,3 +141,33 @@ def test_split_spreads_test_crops_over_the_block():
     assert split == assign_split(slices, 6, seed=0)
     with pytest.raises(ValueError, match="at least 3 slices"):
         assign_split([1, 1, 2, 2], 3, seed=0)
+
+
+def test_points_written_for_qupath_read_back_unchanged():
+    data = [
+        _feature({"type": "MultiPoint", "coordinates": [_px(1010.0, 2020.0), _px(3100.0, 2100.0)]},
+                 "Neuron"),
+        _feature({"type": "Point", "coordinates": _px(1050.0, 2050.0)}, "Microglia-like"),
+        _feature({"type": "Point", "coordinates": _px(9000.0, 9000.0)}, "Other"),  # extra
+    ]  # fmt: skip
+    lab = read_qupath(data, 3, MPP, CROPS)
+    out = points_geojson(lab, CROPS, MPP)
+    names = [f["properties"]["name"] for f in out["features"]]
+    assert names[:2] == ["crop 00", "crop 01"]  # the slide's squares come along
+    assert all(f["properties"]["source"] == "draft" for f in out["features"][2:])
+    back = read_qupath(out, 3, MPP, CROPS)
+    order = np.lexsort((back.y_um, back.x_um))
+    ref = np.lexsort((lab.y_um, lab.x_um))
+    assert np.allclose(back.x_um[order], lab.x_um[ref]) and np.allclose(
+        back.y_um[order], lab.y_um[ref]
+    )
+    assert list(back.cls[order]) == list(lab.cls[ref]) and list(back.crop[order]) == list(
+        lab.crop[ref]
+    )
+
+
+def test_points_of_several_slides_are_refused():
+    a = read_qupath([_feature({"type": "Point", "coordinates": [1, 2]}, "Neuron")], 3, MPP, CROPS)
+    b = read_qupath([_feature({"type": "Point", "coordinates": [1, 2]}, "Neuron")], 4, MPP, CROPS)
+    with pytest.raises(ValueError, match="one slide at a time"):
+        points_geojson(Labels.concat([a, b]), CROPS, MPP)

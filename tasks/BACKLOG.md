@@ -71,6 +71,7 @@ Conventions that apply to every task (not repeated below):
 | M7-01 | **Real-data spike: detection, recurrence of nuclei, viewer load (first M7 task)** | integration | High | Done | M3-11 |
 | M7-02 | Labelled cells and evaluation | detect | Medium | Done | M7-01 |
 | M7-18 | Appearance groups for the class list (added 2026-11-08) | detect | Medium | Done | M7-02 |
+| M7-19 | Draft labels for expert correction (added 2026-11-08) | detect | Medium | Done | M7-18 |
 | M7-00 | Cell contracts (C13 to C18) | docs | Low | To do | M7-01 |
 | M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | To do | M7-00, M3-02 |
 | M7-04 | Work-dir layout and cell file I/O | store | Low | To do | M7-00, M3-01 |
@@ -154,6 +155,7 @@ flowchart TD
     M7-07 --> M7-12
     M7-03 --> M7-12 --> M7-13
     M7-02 --> M7-18 --> M7-10
+    M7-18 --> M7-19
     M7-09 --> M7-10 --> M7-11
     M7-13 --> M7-14
     M7-13 --> M7-15
@@ -920,6 +922,39 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
     - (c) tell microglia-like from vessel-wall cells by the surroundings: a vessel wall next to the nucleus means vessel-wall;
     - (d) the gallery images serve as reference pictures for the labeller.
   - **Owner decision (2026-11-08):** the six classes and the clarifications (a) to (d) are approved; `docs/LABELLING.md` updated. Q9 may still change the list.
+
+#### M7-19 Draft labels for expert correction · Medium · Done
+- **Objective (owner, 2026-11-08):** label the 20 crops provisionally now, so that the pipeline can be built and tested, and so that the supervisor corrects drafts instead of labelling from an empty square. When the expert labels arrive, they replace the drafts.
+- **Rule:** drafts are **not ground truth**. They come from the detectors and measurements they would test, so scores against them are circular. They are never used for accuracy figures (AC10, M7-10, M7-11 test results); they live in `labels/draft/`, separate from the expert labels in `labels/annotations/`, and every draft point is marked `"source": "draft"`.
+- **Method:**
+  - positions: union of InstanSeg and StarDist (level 0) inside each crop, duplicates within 3 µm merged;
+  - classes: the appearance groups of M7-18 (same features, standardisation and grouping), mapped to the six classes by fixed rules; "Other" is left to the expert;
+  - the rules are spot-checked on a gallery per class.
+- **Outputs:**
+  - per slide `labels/draft/<slide file>.geojson`, with the crop squares plus one point set per class, ready to open in QuPath and correct;
+  - counts, and a gallery per class.
+- **Depends on:** M7-18. **Files:** `scripts/draft_labels.py`, `src/brainrec/detect/labels.py` (`points_geojson`), `tests/unit/test_labels.py`, `docs/LABELLING.md` (correcting drafts).
+- **Acceptance:**
+  - the drafts load through the same reader as expert labels;
+  - the owner has seen the class galleries;
+  - the guide explains how to correct the drafts.
+- **Result (2026-11-08):**
+  - **Code:**
+    - `points_geojson(labels, crops, mpp, source)` in `detect/labels.py`: the slide's crop squares plus one MultiPoint set per crop and class, with `"source"`. It refuses labels of several slides.
+    - 2 tests: a round trip through `read_qupath` is unchanged, and labels of several slides are refused.
+    - Full suite afterwards: 303 passed; ruff and mypy clean.
+  - **Script:** `scripts/draft_labels.py` (2 min).
+    - **Counts:** 1603 draft labels in the 20 crops (1101 train, 502 test): Neuron 326, Astrocyte-like 391, Oligodendrocyte-like 705, Microglia-like 130, Vessel-wall 51, Other 0.
+    - **Rules:** in `labels/draft/counts.json`.
+    - **Check:** the drafts load through `load_labels`, the expert-label reader.
+  - **Spot check by eye** (galleries `labels/draft/gallery_<class>.jpg`):
+    - **Neuron:** mostly plausible (large textured nuclei, nucleolus, cell body), with a few small glia-like nuclei.
+    - **Vessel-wall:** the first rule (any bright gap of 3 µm² or more) gave 149, mostly elongated nuclei next to the many small tissue holes. It was tightened to a lumen of at least 15 µm² and an elongation of at least 1.8, giving 51, mostly along real gaps.
+    - **Astrocyte-like:** the weakest class. It includes faint smudges that may not be nuclei, and some neuron nuclei in faint cell bodies.
+    - These typical errors are listed in `docs/LABELLING.md` for the expert.
+  - **Pipeline check (circular, not an accuracy figure):** InstanSeg alone against the drafts gives F1 0.88 (train) and 0.90 (test). This mostly measures what StarDist adds to the drafts.
+  - **Guide:** `docs/LABELLING.md` explains how to correct the drafts in QuPath instead of labelling from empty squares.
+  - **For M7-10:** report the share of expert labels identical to a draft, as a check that the drafts were really reviewed.
 
 ### Component: docs
 

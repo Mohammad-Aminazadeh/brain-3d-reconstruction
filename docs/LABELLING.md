@@ -49,6 +49,23 @@ Do **not** mark red blood cells (no nucleus), empty holes, debris or out-of-focu
 5. For the outlines, use the **Brush** or **Polygon** tool, then set the class of the outline (right-click → **Set class**).
 6. When a slide is done, export: **File → Export objects as GeoJSON** → **All objects**. Save it in `labels/annotations/` with the slide's file name plus `.geojson`, for example `250_23_II16_1_H - 2024-11-11 15.08.23.ndpi.geojson`. That is the same name as the file in `qupath/`.
 
+## Faster: correct the draft labels
+
+Every crop already has **draft labels** (task M7-19), in `labels/draft/<slide file>.geojson`. They are about 1600 points with classes, made automatically by the detectors and the appearance groups. **They are not checked and contain errors.** Typical errors:
+- faint smudges marked as Astrocyte-like that are not nuclei;
+- neuron nuclei in faint cell bodies marked as Astrocyte-like;
+- microglia-like and vessel-wall cells confused;
+- missed pale nuclei.
+
+To use them, in step 3 drag the file from `labels/draft/` onto the slide instead of the one from `qupath/`. The squares and one point set per class appear (named `draft <class>`). Then check **every** point:
+- delete wrong points;
+- add missed nuclei;
+- move points to the right class set.
+
+Export as in step 6, to `labels/annotations/`.
+
+Only your exported, checked labels count as ground truth. The drafts themselves are never used to measure accuracy. Points that you leave unchanged are taken as confirmed by you, so check them all.
+
 ## Checks before you hand over
 
 - Every square has its points, and every point has a class.

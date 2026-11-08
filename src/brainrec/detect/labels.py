@@ -128,6 +128,36 @@ def crops_geojson(crops: list[Crop], mpp_um: float) -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": features}
 
 
+def points_geojson(
+    labels: Labels, crops: list[Crop], mpp_um: float, source: str = "draft"
+) -> dict[str, Any]:
+    """Labels of one slide as QuPath objects: its crop squares plus one point set (MultiPoint
+    annotation) per crop and class, marked with `source` (for example "draft"), so they can be
+    opened in QuPath, corrected and exported again. Labels must all belong to one slide."""
+    slices = set(labels.slice_id.tolist())
+    if len(slices) > 1:
+        raise ValueError(f"labels of several slices {sorted(slices)}; write one slide at a time")
+    own = [c for c in crops if c.slice_id in slices] if slices else []
+    features = crops_geojson(own, mpp_um)["features"]
+    for crop_id in sorted(set(labels.crop.tolist())):
+        for cls in sorted(set(labels.cls[labels.crop == crop_id].tolist())):
+            sel = (labels.crop == crop_id) & (labels.cls == cls)
+            pts = np.stack([labels.x_um[sel], labels.y_um[sel]], axis=1) / mpp_um
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "MultiPoint", "coordinates": pts.tolist()},
+                    "properties": {
+                        "objectType": "annotation",
+                        "name": f"{source} {cls}",
+                        "classification": {"name": cls},
+                        "source": source,
+                    },
+                }
+            )
+    return {"type": "FeatureCollection", "features": features}
+
+
 def save_crops(path: Path, crops: list[Crop], classes: tuple[str, ...], mpp_um: float) -> None:
     data = {
         "schema": SCHEMA,
