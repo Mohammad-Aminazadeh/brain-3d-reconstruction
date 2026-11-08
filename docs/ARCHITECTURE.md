@@ -196,10 +196,10 @@ apply_override(...)                                      # post-MVP
 cells_report(work, ids, cfg) -> dict                     # M7-16: counts and density per slice and type,
     # flags (outliers, blur, folds), review crops; evaluate(labels, cells) -> scores (M7-02, M7-10)
 
-# detect                             # M7, Proposed; names and fields fixed in M7-00 (C13, C14)
+# detect                             # M7; file contracts fixed in M7-00 (C13, C14); signatures may be refined by the implementing task
 detect_nuclei(rgb: ndarray, mask: ndarray, um_per_px: float, cfg) -> Profiles   # one tile;
     # centres, radii (equivalent area), outlines, measurements (shape, staining, nucleolus) in µm
-classify(profiles: Profiles, model) -> Profiles          # class id, all class probabilities, confidence (decision 0006)
+classify(profiles: Profiles, model) -> Profiles          # class id, all class probabilities, confidence (decision 0006); "rules-v1" until M7-11
 # implemented (M7-02): detect/labels.py - Crop, Labels, CLASSES, candidate_centres, assign_split,
 #   crops_geojson, save_crops/load_crops, read_qupath(geojson, slice_id, mpp, crops, classes),
 #   load_labels(dir, crops, classes, mpp); detect/evaluate.py - Detections,
@@ -209,7 +209,7 @@ run_detect(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwr
     # C7; resumes per slice (like preprocess); tiles at 2x with overlap, a profile belongs to the tile
     # holding its centre; nothing outside the mask; writes cells/{id}.npz and cells/{id}.json
 
-# cells                              # M7, Proposed; fixed in M7-00 (C15 to C18)
+# cells                              # M7; file contracts fixed in M7-00 (C15 to C18)
 align_local(fixed: Profiles, moving: Profiles, t_pair: Transform2D, cfg) -> LocalField
     # cell-scale displacement (µm) on a grid inside the overlap, on top of the pair transform;
     # from the nuclei (feature-based, robust fit per window); confidence per grid node
@@ -231,7 +231,7 @@ WorkDir(root).manifest, .volume        # the only place that knows file names
     .pair_transform(k), .chained_transform(id)               # implemented (M3-01), C5
     .qc_report, .qc_overlay(k); .reg_dir, .mask_dir, .transforms_dir, .qc_dir   # (M3-01), C10
     .cell_profiles(id), .cell_meta(id), .cell_pair(k), .cell_layer(type), .cell_table,
-    .qupath(id), .density                                    # M7-04 (Proposed), C13 to C18
+    .qupath(id), .density                                    # M7-04, C13 to C18
     # ids must be positive integers; anything else raises ValueError
 Manifest(path).get(key), .set(key, value)   # JSON, atomic write
 
@@ -387,78 +387,145 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 - **`failed`:** the chosen candidate's IoU is below `boundary_min_iou`. It is still used as a best effort (M3-13): `register` chains every pair, warns about each failed pair and exits 0; the pair file keeps status `failed`. Nothing is accepted silently: QC always flags failed pairs.
 - QC separately flags pairs whose scores are below `qc_min_ncc` or `qc_min_dice` (C10).
 
-### 5.2 Cell contracts (Proposed, 2026-11-06; fixed in M7-00 after the spike M7-01)
+### 5.2 Cell contracts (fixed in M7-00, approved by the owner 2026-11-08)
 
-Drafts from decision 0005. Field names, file layouts and thresholds are fixed, with the owner's approval, in M7-00; until then they are Proposed.
+Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Evidence: spike M7-01, appearance groups M7-18, label tools M7-02 and M7-19, decisions 0005 and 0006. Values marked *(tunable)* are config defaults (C9), measured again in the named task.
 
-**C13 Cell profile file (per slice, slice frame).**
-- **`cells/{id}.npz`**, one row per detected profile:
-  - **position and size:** centre `x_um`, `y_um` (C1, slice frame) and radius `r_um` (equivalent-area circle);
-  - **shape:** area, outline (simplified polygon), eccentricity, solidity;
-  - **staining:** mean and spread of the hematoxylin channel, texture;
-  - **nucleolus:** visible or not;
-  - **classification:** detection confidence, class id (C14), the probability of every class, and the confidence (top probability).
-- **`cells/{id}.json`:** `{"schema": "brainrec.cells/1", "slice_id", "source", "downsample", "mpp_um", "method", "version", "n_profiles"}`.
-- **Rules:**
-  - tiles overlap by more than the largest nucleus;
+**C13 Cell profile file (per slice, slice frame C1).**
+- **Detection:**
+  - InstanSeg `brightfield_nuclei` at the **2x level** (0.44 µm/px), in tiles of 1024 × 1024 px with an overlap of 40 µm *(tunable)*;
   - a profile belongs to the tile that contains its centre, so none is cut or counted twice;
-  - no centre lies outside the tissue mask (F12).
+  - no centre lies outside the tissue mask (F12); profiles smaller than 8 µm² are dropped.
+  - StarDist stays the second candidate (M7-10); the detector name and version are recorded.
+- **Level-0 patch:** for profiles of 8 µm diameter or more *(tunable)*, a 1x patch is read for the nucleolus and an exact outline and size (M7-01: nucleoli are 2 to 4 px at 2x).
+- **Sharpness:** variance of the Laplacian per tile at 2x, scaled to the level-0 value of M7-01. Tiles below `detect_min_sharpness` (default 100) are flagged, and their profiles get `blurred = 1`.
+- **`cells/{id}.npz`**, one row per profile. Arrays (float32 unless noted):
 
-**C14 Type table (config).**
-- **Entry fields:** a list of `{id, name, colour, proportions [rx, ry, rz], min_radius_um, max_radius_um}`.
-- **Ids:** stable. There is no "unclassified" (decision 0006); "other" is a class for cells that fit none of the listed looks.
-- **Start (owner, 2026-11-08):** neuron, astrocyte-like, oligodendrocyte-like, microglia-like, vessel-wall cell, other. The list may change after M7-18 and Q9. Suspicious classes are added in M9.
+  | Field | Meaning |
+  |---|---|
+  | `x_um`, `y_um` | centre (float64), slice frame |
+  | `r_um`, `area_um2` | equivalent-area radius, area |
+  | `outline_offsets` (int64), `outline_xy` (int16) | ragged outline: vertices relative to the centre in units of 0.1 µm, at most 32 vertices per profile |
+  | `diameter_um`, `elongation`, `solidity`, `darkness`, `texture`, `nucleolus`, `cell_body`, `halo`, `vessel_um` | the 9 appearance features of M7-18 (vessel and cell-body features improved in M7-05d) |
+  | `nucleolus_seen` (uint8) | nucleolus visible (from the 1x patch; 0 when no patch) |
+  | `det_conf` | detection confidence |
+  | `blurred` (uint8) | in a tile below the sharpness limit |
+  | `class_id` (uint8) | C14 id, never empty (decision 0006) |
+  | `class_prob` (n × n_classes) | probability of every class, in C14 order |
+  | `confidence` | top class probability |
+
+- **`cells/{id}.json`:**
+  - fields: `{"schema": "brainrec.cells/1", "slice_id", "source", "detector", "detector_version", "downsample": 2, "mpp_um", "classifier", "class_names", "n_profiles", "n_blurred_tiles", "tile_sharpness": [...]}`;
+  - `classifier` is `"rules-v1"` (the appearance-group rules of M7-19) until M7-11 trains one on expert labels;
+  - written last and atomically, as C4.
+
+**C14 Type table (config `cell_types`).**
+- **Ids are stable and never reused.** There is no "unclassified" (decision 0006). Id 0 is reserved and never written.
+- **Colours:** colour-blind safe (Okabe-Ito).
+- **Proportions:** spheres by default (Q26); `proportions` allows a fixed axis ratio per class.
+- **Radius limits:** guards against implausible profiles; drops are logged.
+
+  | id | name | colour | proportions | radius µm |
+  |---|---|---|---|---|
+  | 1 | Neuron | `#E69F00` | [1, 1, 1] | 2 to 15 |
+  | 2 | Astrocyte-like | `#56B4E9` | [1, 1, 1] | 2 to 8 |
+  | 3 | Oligodendrocyte-like | `#009E73` | [1, 1, 1] | 1.5 to 6 |
+  | 4 | Microglia-like | `#F0E442` | [1, 1, 1] | 1.5 to 8 |
+  | 5 | Vessel-wall | `#D55E00` | [1, 1, 1] | 1.5 to 10 |
+  | 6 | Other | `#999999` | [1, 1, 1] | 1.5 to 15 |
+
+- **Later:** suspicious classes (M9) get new ids from 7.
+- **Labels:** the label files (M7-02) use the names; ids are looked up here.
 
 **C15 Local alignment and links (per pair, keyed by the moving slice k, as C5).**
 - **`cells/pair_{k}.npz`** holds:
-  - the local displacement field k → k−1 in µm, on a grid (Proposed 100 µm) inside the overlap of both masks, on top of the pair transform, with a confidence per node;
-  - the links: index pairs of profiles in k and k−1.
-- **Linking rule (Proposed):**
-  - after local alignment, two profiles are linked if their centres are closer than `link_tolerance_um` (Proposed: the larger of 1.5 µm and half the smaller radius);
+  - `grid_x_um`, `grid_y_um` (node positions in k−1's frame, spacing `align_grid_um` = 100 *(tunable)*);
+  - `dx_um`, `dy_um` (displacement added after the pair transform k → k−1);
+  - `node_conf` (0 to 1; nodes without support are filled from their neighbours and get 0);
+  - `links` (m × 2 int32: profile indices in k and k−1);
+  - `link_dist_um`.
+  - `pair_{k}.json` records `{"schema": "brainrec.cellpair/1", "method", "n_links", "share_linked", "median_link_um"}`.
+- **Method:** the method of the field is chosen in M7-12. M7-01 showed that one correlation per window is not enough: it needs larger context, a smooth field and a robust fit to the nuclei.
+- **Linking rule:**
+  - after local alignment, profiles in k and k−1 are linked if their centres are closer than max(`link_tolerance_um` = 1.5, 0.5 × the smaller radius);
   - one-to-one, closest first;
-  - chains longer than `link_max_sections` are split and flagged (for example a vessel wall mistaken for one cell).
-- **Independent of section thickness.**
-- If the sections have gaps, few links are found and every profile stays its own cell.
+  - no link across classes 1 (Neuron) and 3 (Oligodendrocyte-like) unless both confidences are below 0.5;
+  - chains longer than `link_max_sections` = 8 *(tunable)* are split at their weakest link and flagged.
+- **Independent of the section thickness.** With gaps, few links are found and every profile stays its own cell.
 
 **C16 3D cell and placement.**
-- **A 3D cell** is a chain of one or more linked profiles. Its representative profile is the largest one, cut closest to the cell's equator.
+- **Cell:** a chain of one or more linked profiles. The representative profile is the largest (closest to the equator).
+- **Class:** the class of the chain is the argmax of the summed class probabilities of its profiles; the confidence is the mean of their probabilities for that class.
 - **Position:**
-  - (x, y) is the representative centre mapped by the chained transform of its slice (C2, C5), so the blob sits on its nucleus in the volume;
-  - z is that slice's position, exactly as in the volume.
-- **Radius:**
-  - the representative radius × the transform's scale;
-  - the blob is a sphere in µm × the type's proportions (C14), so its height does not depend on the unknown thickness.
-- **Thickness-dependent values:** once `section_thickness_um` is set, a 3D size estimate from the chain (profile radii over z) is added as a measurement.
-- **Cell id:** unique and stable, uint64 = slice id × 2³² + profile index of the representative.
+  - x, y is the representative centre through the chained transform of its slice (C2, C5), so the blob sits on its nucleus in the volume;
+  - z = (index of that slice in the range + 0.5) × `z_spacing_um`, the centre of its plane in the volume;
+  - volume coordinates are reference µm minus `canvas_origin_um` (C8, C11).
+- **Radius:** the representative `r_um` × the transform's scale, as a sphere in µm × the class proportions (C14).
+- **3D size estimate:** once `section_thickness_um` is set, an additional measurement fitted from the chain's radii over z.
+- **Cell id:** uint64 = slice id × 2³² + profile index of the representative. Stable while detection is unchanged.
 
-**C17 Cell layers (Neuroglancer precomputed annotations).**
-- **Annotations:** type `ellipsoid`, coordinate space x, y, z in µm, matching the volume.
-- **Layers:** one layer per type, `cells/layer_<type>/`.
-- **Properties:** radius, type probability, detection confidence, nucleolus, slice, number of linked profiles.
-- **Spatial index:** multi-level, so few cells are drawn when zoomed out.
-- **File count:** spatial index and by-id index sharded (`neuroglancer_uint64_sharded_v1`); no relationships. At most about 20 files per layer (exFAT rule).
-- **Writer:** an own numpy writer, because the `neuroglancer` Python writer is unsharded and single-level. Tests use a matching reader.
+**C17 Cell layers (Neuroglancer precomputed annotations; prototype tested with 4.19 million cells in M7-01).**
+- **Annotations:**
+  - `annotation_type` `ELLIPSOID`;
+  - dimensions x, y, z in µm (`[1e-6, "m"]`), the volume's coordinates (C16);
+  - geometry = centre (3 × float32) + radii (3 × float32).
+- **Layers:** one layer per class, `cells/layer_<name>/` (name in lower case, for example `layer_neuron`).
+- **Properties,** largest type first so no padding is needed between them:
+
+  | Property | Type |
+  |---|---|
+  | `confidence` | float32 |
+  | `det_conf` | float32 |
+  | `radius_um` | float32 |
+  | `slice` | uint16 |
+  | `n_profiles` | uint16 |
+  | `nucleolus` | uint8 enum no/yes |
+  | `blurred` | uint8 enum no/yes |
+
+  Padded to 4 bytes.
+- **Indexes:**
+  - by-id index: sharded (`neuroglancer_uint64_sharded_v1`, identity hash, shard_bits 0, minishard_bits 12, raw encodings), one file `by_id/0.shard`;
+  - spatial index: one sharded level per `spatial<i>/0.shard` (minishard_bits 6, keys = compressed Morton code). The grid is [2^i, 2^i, 1]; each chunk holds at most `limit` = 4000 annotations in random order, and the finest level takes the rest.
+- **File count:** at most about 20 files per layer, plus `info`.
+- **Viewer:** the layer shader gets a colour picker and a `min_confidence` slider; the tissue fades with the image layer's own opacity (M7-01).
 
 **C18 Cell table, QuPath export and density maps.**
 - **`cells/table.csv`:** one row per 3D cell, with:
-  - id, type, probability, 3D position (µm, volume frame), radius;
-  - measurements of the representative profile;
-  - slice id, number of profiles;
-  - position in the source slide (µm and level-0 pixels).
-- **`cells/qupath/{id}.geojson`:** the profiles of one slice as QuPath detections (outline, class, measurements), in level-0 pixels of the source slide, to review on the original slide.
+  - `cell_id`, `class`, `confidence`, the probability of every class;
+  - `x_um`, `y_um`, `z_um` (volume), `radius_um`, `n_profiles`;
+  - `slice`, `x_slice_um`, `y_slice_um`, `x_px0`, `y_px0` (level 0 of the source slide);
+  - the 9 features, `nucleolus_seen`, `blurred`, `det_conf`.
+- **`cells/qupath/{id}.geojson`:** profiles of one slice as QuPath detections (outline polygon, classification, measurements) in level-0 pixels. Written for the slices requested (`--qupath`); GeoJSON is large.
 - **`density.zarr`:**
-  - **format:** OME-Zarr, one channel per type, about 50 µm in x and y, one or a few sections in z;
-  - **unit:** profiles per mm² of section until `section_thickness_um` is set, then cells per mm³ (linked cells; Abercrombie correction where profiles are counted);
-  - **smoothing:** Gaussian over the grid, documented in the attributes.
+  - OME-Zarr 0.5, axes c (class), z, y, x;
+  - x and y on a grid of `density_grid_um` = 50 µm; z per section;
+  - float32 values, Gaussian smoothed over σ = 1 cell in x and y;
+  - attribute `unit` = `"profiles/mm2"` while `section_thickness_um` is null, else `"cells/mm3"` (linked cells; Abercrombie correction where profiles are counted).
+- **Label files** (M7-02, M7-19): `labels/crops.json` (`brainrec.labelcrops/1`), `labels/qupath/<slide>.geojson`, `labels/draft/<slide>.geojson` (drafts, never ground truth), `labels/annotations/<slide>.geojson` (expert exports).
 
-**Extensions of C6 and C9 (Proposed):**
-- **C6:** manifest keys `detect` (per slice with source fingerprints, like `preprocess`) and `cells` (per pair for local alignment and links, like `register`; per range for placement, layers, exports and density).
-- **C9:** new fields, defined once in M7-00:
-  - `section_thickness_um` (default null = unknown);
-  - `detect_downsample` (2), `detect_method`, `detect_tile_um`;
-  - `cell_types` (C14);
-  - `link_tolerance_um`, `link_max_sections`, `align_grid_um`;
-  - `density_grid_um` (50).
+**Extensions of C6 and C9 (fixed with C13 to C18):**
+- **C6:**
+  - manifest key `detect`: per slice, like `preprocess`. The signature holds the detection fields of C9, the detector and model versions and the classifier; each done slice has its source fingerprint.
+  - manifest key `cells`: per pair for `pair_{k}` (key: hashes of both cell files, the pair transform and the alignment settings, like `register`), and per range for placement, layers, table, QuPath and density (signature with the range).
+- **C9:** new fields with their defaults:
+
+  | Field | Default |
+  |---|---|
+  | `section_thickness_um` | null (unknown) |
+  | `detect_downsample` | 2 |
+  | `detect_method` | `"instanseg"` |
+  | `detect_tile_px` | 1024 |
+  | `detect_overlap_um` | 40 |
+  | `detect_min_area_um2` | 8 |
+  | `detect_patch_min_diameter_um` | 8 |
+  | `detect_min_sharpness` | 100 |
+  | `cell_types` | the C14 table |
+  | `align_grid_um` | 100 |
+  | `link_tolerance_um` | 1.5 |
+  | `link_max_sections` | 8 |
+  | `density_grid_um` | 50 |
+
+  They are added to `ProjectConfig` by the task that first uses them (M7-04 or M7-05).
 
 ## 6. Technology decisions
 

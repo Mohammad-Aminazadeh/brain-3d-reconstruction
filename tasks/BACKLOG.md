@@ -72,7 +72,7 @@ Conventions that apply to every task (not repeated below):
 | M7-02 | Labelled cells and evaluation | detect | Medium | Done | M7-01 |
 | M7-18 | Appearance groups for the class list (added 2026-11-08) | detect | Medium | Done | M7-02 |
 | M7-19 | Draft labels for expert correction (added 2026-11-08) | detect | Medium | Done | M7-18 |
-| M7-00 | Cell contracts (C13 to C18) | docs | Low | To do | M7-01 |
+| M7-00 | Cell contracts (C13 to C18) | docs | Low | Done | M7-01 |
 | M7-03 | Synthetic nuclei and synthetic 3D cells | tests | Medium | To do | M7-00, M3-02 |
 | M7-04 | Work-dir layout and cell file I/O | store | Low | To do | M7-00, M3-01 |
 | M7-05 | Nucleus detection, tiled | detect | High | To do | M7-03, M7-04 |
@@ -958,10 +958,19 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: docs
 
-#### M7-00 Cell contracts · Low · To do
+#### M7-00 Cell contracts · Low · Done
 - **Objective:** fix C13 to C18 and the C6 and C9 extensions (`docs/ARCHITECTURE.md` section 5.2) with the spike's facts and the answers to Q9, Q10, Q26 and Q27.
 - **Depends on:** M7-01. **Files:** `docs/ARCHITECTURE.md`.
 - **Acceptance:** owner approval.
+- **Result (2026-11-08, approved by the owner):** C13 to C18 and the C6/C9 extensions fixed in `docs/ARCHITECTURE.md` section 5.2. The main choices:
+  - **Detection (C13):** InstanSeg at 2x in 1024 px tiles with 40 µm overlap; 1x patches for nuclei of 8 µm or more (nucleolus, exact size); a sharpness flag per tile.
+  - **Cell file (C13):** the 9 appearance features of M7-18 per profile, all class probabilities and the confidence; the classifier is the M7-19 rules (`rules-v1`) until M7-11.
+  - **Type table (C14):** six classes with stable ids 1 to 6 (0 reserved, no "unclassified"), Okabe-Ito colours, spheres.
+  - **Pair file (C15):** a field on a 100 µm grid plus the links; linking within max(1.5 µm, half the smaller radius), one-to-one, at most 8 sections, no neuron–oligodendrocyte links unless both are uncertain. The alignment method is chosen in M7-12.
+  - **3D cell (C16):** class by summed probabilities over the chain.
+  - **Layers (C17):** the M7-01 prototype format (sharded by-id index and multi-level spatial index, limit 4000, properties largest first).
+  - **Exports (C18):** the table columns, QuPath on request, `density.zarr` per class, the unit switching with the thickness.
+  - **Assumptions still open (Q9, Q10, Q26, Q27), until the supervisor answers:** nucleus not cell body, spheres, and the Okabe-Ito colours.
 
 ### Component: tests
 
