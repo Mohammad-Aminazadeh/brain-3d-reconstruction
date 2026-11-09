@@ -266,6 +266,10 @@ write_cell_layers(placed, types, out_dir) -> list[Path]  # Neuroglancer precompu
     #   (vectorised; written to out.tmp, then renamed); write_shard; read_layer and read_by_id
     #   (looks only in the id's minishard, as the viewer does) for the tests
 export_table(placed, out: Path), export_qupath(profiles, slice_id, out: Path)   # C18
+    # implemented (M7-14), cells/export.py: write_table(out, placed, cells, TableInput, names)
+    #   -> bytes (chunked, via .tmp); qupath_features(profiles, mpp, per-profile cell id, class,
+    #   confidence, profile count, colours) -> detections; write_qupath(out, features, n) ->
+    #   bytes (streamed); check_space(path, bytes): OSError below 1.2 x the estimate
 density_map(placed, spec, cfg) -> Path                   # density.zarr, one channel per type (C18)
 run_cells(catalog, work, cfg, manifest, overwrite=False) -> StageResult
     # C7 shape without slide reads; local alignment and links resume per pair (like register),
@@ -341,8 +345,9 @@ brainrec --config C qc-cells --slices A-B [--overwrite]   # implemented (M7-16):
 brainrec --config C detect --slices A-B [--overwrite] [--no-ask]   # implemented (M7-06): cell files
     # per slice; asks "Start slice N? [y/N]" after each slice (no terminal = no; --no-ask runs all);
     # table of nuclei, dropped (radius limits), blurred tiles and seconds per slice
-brainrec --config C cells --slices A-B [--overwrite]      # M7-07 (implemented: place, layers; table of
-    # cells per class); later link (M7-13), table, density
+brainrec --config C cells --slices A-B [--overwrite] [--qupath A-B]   # M7-07, M7-12 to M7-14:
+    # pairs, links, layers, cell table; --qupath also exports those slices for QuPath (each run
+    # it is given); prints pairs, cells per class, table and export sizes; later density (M7-15)
     # M7-12: first a table per pair (status, share of locked nodes, median shift, recurrence,
     # chance level)
 brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512] [--tissue-opacity F]
@@ -616,6 +621,23 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   - `slice`, `x_slice_um`, `y_slice_um`, `x_px0`, `y_px0` (level 0 of the source slide);
   - the 9 features, `nucleolus_seen`, `blurred`, `det_conf`.
 - **`cells/qupath/{id}.geojson`:** profiles of one slice as QuPath detections (outline polygon, classification, measurements) in level-0 pixels. Written for the slices requested (`--qupath`); GeoJSON is large.
+- **As implemented (M7-14):**
+  - **Table:**
+    - `prob_<class>` = the mean probability over the cell's profiles.
+    - The source columns (`slice`, `x_slice_um`, features …) are the representative's.
+    - Extra column `radius_3d_um` (C16), in volume µm like `radius_um`; NaN while the thickness is unknown.
+    - `det_conf` is NaN for InstanSeg.
+    - Written with the layers, from the same inputs.
+  - **Pixel convention:** `x_px0` = `x_slice_um` / mpp, QuPath's convention with pixel corners at whole numbers (C1 has centres at whole numbers; half a pixel apart).
+  - **QuPath file:** every profile of the slice is a `detection`.
+    - Classification: its cell's class, with the C14 colour.
+    - Measurements: cell_id, cell confidence, profiles in cell, radius_um, area_um2, the 9 features, nucleolus_seen, blurred, det_conf.
+    - NaN measurements are left out, because QuPath's JSON reader rejects NaN.
+    - Linked profiles carry the same cell_id.
+    - Every class carries its colour; QuPath 0.7 cannot read a classification without one.
+    - Outlines that are not simple (they fold over or touch themselves) are written as their convex hull (`is_simple`, `valid_ring`). QuPath rejects the whole file for one such polygon ("Reduction failed, possible invalid input"). This affects 2.8% of the outlines of slice 9; the cell files keep the original outlines.
+  - **Manifest:** `cells.layers.table_bytes`; `cells.qupath["<id>"]` = {n_profiles, bytes, seconds}.
+  - **Size (slices 1 to 10):** table 915 MB for 4.19 million cells (218 bytes per row, so about 13 GB for 140 slices); QuPath export 504 MB for slice 9 (1,100 bytes per detection).
 - **`density.zarr`:**
   - OME-Zarr 0.5, axes c (class), z, y, x;
   - x and y on a grid of `density_grid_um` = 50 µm; z per section;

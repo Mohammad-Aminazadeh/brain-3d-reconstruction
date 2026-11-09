@@ -19,6 +19,7 @@ import itertools
 import json
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -26,8 +27,10 @@ import zarr
 
 from brainrec.catalog import Catalog, ProjectConfig
 from brainrec.cells.align import CHANCE_OFFSET_UM, METHOD, AlignParams, align_pair
+from brainrec.cells.export import TableInput, qupath_features, write_qupath, write_table
 from brainrec.cells.layers import write_layer
 from brainrec.cells.link import (
+    Cells,
     Links,
     LinkSide,
     build_cells,
@@ -223,39 +226,37 @@ def _pair_links(work: WorkDir, ids: list[int]) -> list[Links]:
     return out
 
 
-def run_cells(
-    catalog: Catalog,
-    work: WorkDir,
-    cfg: ProjectConfig,
-    manifest: Manifest,
-    overwrite: bool = False,
-) -> StageResult:
-    """Align and link every consecutive pair (`align_and_link_pairs`), build 3D cells from the
-    chains of linked profiles, place them in the volume frame and write one layer per class
-    (`cells/layer_<name>/`). Skips the layers if they exist from the same inputs. Layers of other
-    inputs: StageExistsError unless `overwrite`. FileNotFoundError without a volume, cell files
-    or pair transforms; CellsInputError if volume, registration or cell files disagree.
-    `StageResult` lists the slices of the layers; the pairs are in the manifest (`cells.pairs`)."""
-    ids = [s.id for s in catalog.slices]
-    frame = volume_frame(work)
-    _check_inputs(catalog, work, cfg, frame)
-    align_and_link_pairs(catalog, work, cfg, manifest, overwrite)
-    signature = _signature(catalog, work, cfg, frame)
-    state = (manifest.get(STAGE) or {}).get("layers")
-    layers = [work.cell_layer(t.name) for t in cfg.cell_types]
-    if state is not None and all((p / "info").exists() for p in layers):
-        if state["signature"] == signature:
-            return StageResult(skipped=ids)
-        if not overwrite:
-            changed = sorted(k for k in signature if state["signature"].get(k) != signature[k])
-            raise StageExistsError(
-                f"cell layers exist from other inputs ({', '.join(changed)}); "
-                "use overwrite to replace them"
-            )
-    t0 = time.monotonic()
+@dataclass
+class _Built:
+    """3D cells of a range with what the exports need."""
+
+    placed: Placed  # one row per cell, in the order of `cells`
+    cells: Cells
+    table: TableInput
+    sizes: list[int]
+    n_split: int
+    profiles: dict[int, Profiles]  # only the slices to export to QuPath
+    mpp_um: dict[int, float]
+
+
+def _build(ids: list[int], work: WorkDir, cfg: ProjectConfig, frame: VolumeFrame,
+           keep: set[int]) -> _Built:  # fmt: skip
     names = [t.name for t in cfg.cell_types]
     proportions = np.array([t.proportions for t in cfg.cell_types], float)
-    parts, sizes, r_um, prob, seen, section = [], [], [], [], [], []
+    parts, sizes, r_um, prob, seen, section, x, y, mpp, feats = (
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
+    kept: dict[int, Profiles] = {}
+    mpp_of: dict[int, float] = {}
     for s, k in enumerate(ids):
         profiles, meta = load_profiles(work, k)
         if meta["class_names"] != names:
@@ -269,32 +270,126 @@ def run_cells(
         prob.append(profiles.class_prob)
         seen.append(profiles.nucleolus_seen)
         section.append(np.full(len(profiles), s))
+        mpp_of[k] = float(meta["mpp_um"][0])
+        x.append(profiles.x_um)
+        y.append(profiles.y_um)
+        mpp.append(np.full(len(profiles), mpp_of[k]))
+        feats.append(profiles.features)
+        if k in keep:
+            kept[k] = profiles
     label, n_split = build_chains(sizes, _pair_links(work, ids), cfg.link_max_sections)
     cells = build_cells(label, np.concatenate(r_um), np.concatenate(prob), np.concatenate(seen),
                         np.concatenate(section), cfg.section_thickness_um)  # fmt: skip
     placed = place_cells(Placed.concat(parts), cells, proportions)
+    rep = cells.rep
+    # the 3D radius in volume µm like `radius_um`: x the representative's transform scale
+    scale = placed.radius_um / np.concatenate(r_um)[rep]
+    cells.radius_3d_um = (cells.radius_3d_um * scale).astype(np.float32)
+    table = TableInput(np.concatenate(x)[rep], np.concatenate(y)[rep], np.concatenate(mpp)[rep],
+                       np.concatenate(feats)[rep])  # fmt: skip
     if n_split:
         log.warning("cells: %d chains longer than %d sections were split at their weakest link",
                     n_split, cfg.link_max_sections)  # fmt: skip
+    return _Built(placed, cells, table, sizes, n_split, kept, mpp_of)
+
+
+def _write_layers(built: _Built, work: WorkDir, cfg: ProjectConfig) -> dict[str, int]:
+    placed = built.placed
     if len(placed):
         bounds = ((placed.centre - placed.radii).min(0), (placed.centre + placed.radii).max(0))
     else:
         bounds = (np.zeros(3), np.ones(3))
     counts = {}
-    for t, path in zip(cfg.cell_types, layers, strict=True):
+    for t in cfg.cell_types:
         sel = placed.class_id == t.id
-        write_layer(path, placed.subset(sel), bounds)
+        write_layer(work.cell_layer(t.name), placed.subset(sel), bounds)
         counts[t.name] = int(sel.sum())
         log.info("cells: layer %s, %d cells", t.name, counts[t.name])
-    lengths = np.bincount(cells.n_profiles.astype(int))
-    entry = {
-        "signature": signature,
-        "counts": counts,
-        "n_profiles": int(sum(sizes)),
-        "n_cells": len(cells),
-        "n_split_chains": n_split,
-        "chain_lengths": {str(n): int(c) for n, c in enumerate(lengths) if c},
-        "seconds": round(time.monotonic() - t0, 1),
-    }
-    manifest.set(STAGE, {**(manifest.get(STAGE) or {}), "layers": entry})
-    return StageResult(done=ids)
+    return counts
+
+
+def _write_qupath(built: _Built, k: int, ids: list[int], work: WorkDir, cfg: ProjectConfig) -> dict:
+    s = ids.index(k)
+    a = int(sum(built.sizes[:s]))
+    cell = built.cells.profile_cell[a : a + built.sizes[s]]
+    placed = built.placed
+    names = np.array([t.name for t in cfg.cell_types], dtype=object)
+    colours = {t.name: (int(t.colour[1:3], 16), int(t.colour[3:5], 16), int(t.colour[5:7], 16))
+               for t in cfg.cell_types}  # fmt: skip
+    p = built.profiles[k]
+    counts: dict[str, int] = {}
+    feats = qupath_features(p, built.mpp_um[k], placed.cell_id[cell],
+                            names[placed.class_id[cell].astype(int) - 1].tolist(),
+                            placed.confidence[cell], placed.n_profiles[cell], colours, counts)  # fmt: skip
+    t0 = time.monotonic()
+    size = write_qupath(work.qupath(k), feats, len(p))
+    hull = counts.get("convex_hull", 0)
+    log.info("cells: QuPath export of slice %d, %d detections (%d outlines not simple, written as "
+             "their convex hull), %.0f MB", k, len(p), hull, size / 1e6)  # fmt: skip
+    return {"n_profiles": len(p), "n_convex_hull": hull, "bytes": size,
+            "seconds": round(time.monotonic() - t0, 1)}  # fmt: skip
+
+
+def run_cells(
+    catalog: Catalog,
+    work: WorkDir,
+    cfg: ProjectConfig,
+    manifest: Manifest,
+    overwrite: bool = False,
+    qupath: list[int] | None = None,
+) -> StageResult:
+    """Align and link every consecutive pair (`align_and_link_pairs`), build 3D cells from the
+    chains of linked profiles, place them in the volume frame, write one layer per class
+    (`cells/layer_<name>/`) and the cell table (`cells/table.csv`, C18). Skips layers and table
+    if they exist from the same inputs. Layers of other inputs: StageExistsError unless
+    `overwrite`. `qupath`: slices of the range whose profiles are exported for QuPath
+    (`cells/qupath/{id}.geojson`), written on every request. FileNotFoundError without a volume,
+    cell files or pair transforms; CellsInputError if volume, registration or cell files disagree
+    or a QuPath slice lies outside the range. `StageResult` lists the slices of the layers; pairs,
+    table and exports are in the manifest (`cells`)."""
+    ids = [s.id for s in catalog.slices]
+    qupath = sorted(set(qupath or []))
+    outside = [k for k in qupath if k not in ids]
+    if outside:
+        raise CellsInputError(f"QuPath slices {outside} are not in the range {ids[0]}-{ids[-1]}")
+    frame = volume_frame(work)
+    _check_inputs(catalog, work, cfg, frame)
+    align_and_link_pairs(catalog, work, cfg, manifest, overwrite)
+    signature = _signature(catalog, work, cfg, frame)
+    state: dict[str, Any] = dict((manifest.get(STAGE) or {}).get("layers") or {})
+    old = dict(state.get("signature") or {})
+    layers = [work.cell_layer(t.name) for t in cfg.cell_types]
+    exists = bool(state) and all((p / "info").exists() for p in layers)
+    up_to_date = exists and old == signature and work.cell_table.exists()
+    if exists and old != signature and not overwrite:
+        changed = sorted(k for k in signature if old.get(k) != signature[k])
+        raise StageExistsError(
+            f"cell layers exist from other inputs ({', '.join(changed)}); "
+            "use overwrite to replace them"
+        )
+    if up_to_date and not qupath:
+        return StageResult(skipped=ids)
+    t0 = time.monotonic()
+    built = _build(ids, work, cfg, frame, set(qupath))
+    if not up_to_date:
+        counts = _write_layers(built, work, cfg)
+        table_bytes = write_table(work.cell_table, built.placed, built.cells, built.table,
+                                  [t.name for t in cfg.cell_types])  # fmt: skip
+        log.info("cells: table of %d cells, %.0f MB", len(built.cells), table_bytes / 1e6)
+        lengths = np.bincount(built.cells.n_profiles.astype(int))
+        entry = {
+            "signature": signature,
+            "counts": counts,
+            "n_profiles": int(sum(built.sizes)),
+            "n_cells": len(built.cells),
+            "n_split_chains": built.n_split,
+            "chain_lengths": {str(n): int(c) for n, c in enumerate(lengths) if c},
+            "table_bytes": table_bytes,
+            "seconds": round(time.monotonic() - t0, 1),
+        }
+        manifest.set(STAGE, {**(manifest.get(STAGE) or {}), "layers": entry})
+    exports = dict((manifest.get(STAGE) or {}).get("qupath") or {})
+    for k in qupath:
+        exports[str(k)] = _write_qupath(built, k, ids, work, cfg)
+        manifest.set(STAGE, {**(manifest.get(STAGE) or {}), "qupath": exports})
+    return StageResult(skipped=ids) if up_to_date else StageResult(done=ids)

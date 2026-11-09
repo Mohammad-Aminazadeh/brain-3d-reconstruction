@@ -180,8 +180,14 @@ def test_pair_file_round_trip_and_checks(tmp_path):
 
 
 def _profiles_of(xy: np.ndarray, r: np.ndarray):
+    """Profiles at `xy` with radius `r` and round outlines of 16 vertices (C13 units)."""
     p = classify(_nuclei(np.array([_at(0)] * len(xy)).reshape(-1, 9)), _model(), NAMES)
     p.x_um[:], p.y_um[:], p.r_um[:] = xy[:, 0], xy[:, 1], r
+    a = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+    ring = np.c_[np.cos(a), np.sin(a)]
+    p.outline_offsets = np.arange(len(xy) + 1, dtype=np.int64) * 16
+    p.outline_xy = np.round(np.repeat(np.asarray(r, float), 16)[:, None] * np.tile(ring, (len(xy), 1))
+                            / 0.1).astype(np.int16).reshape(-1, 2)  # fmt: skip
     return p
 
 

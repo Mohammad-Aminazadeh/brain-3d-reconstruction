@@ -465,9 +465,16 @@ def test_cells_builds_layers_and_reports(tmp_path, capsys):
     assert lines[1].split()[-2:] == ["0.0%", "0.0%"]  # no links without recurrence
     assert lines[2].split() == ["class", "cells", "layer"]
     assert lines[3].startswith("Neuron") and lines[3].rstrip().endswith("layer_neuron")
-    assert lines[-1] == "cells (slices 1-2): layers built, 80 cells from 80 profiles"
+    assert lines[-2] == "cells (slices 1-2): layers built, 80 cells from 80 profiles"
+    assert lines[-1].startswith("cell table: ") and lines[-1].endswith(" MB)")
     _run(cfg, "cells", "--slices", "1-2")
-    assert "layers up to date" in capsys.readouterr().out.splitlines()[-1]
+    assert "layers up to date" in capsys.readouterr().out.splitlines()[-2]
+    _run(cfg, "cells", "--slices", "1-2", "--qupath", "2")
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert last.startswith("QuPath export of slice 2: ") and "(40 detections" in last
+    assert _error(cfg, "cells", "--slices", "1-2", "--qupath", "3") == (
+        "error: QuPath slices [3] are not in the range 1-2"
+    )
 
 
 def test_cells_errors_are_one_line(tmp_path):

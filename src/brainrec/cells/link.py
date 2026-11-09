@@ -136,6 +136,8 @@ class Cells:
     n_profiles: np.ndarray  # uint16
     nucleolus: np.ndarray  # uint8: seen in any profile
     radius_3d_um: np.ndarray  # float32, NaN while the section thickness is unknown
+    class_prob: np.ndarray  # (n_cells, n_classes) float32: mean over the chain's profiles
+    profile_cell: np.ndarray  # (n_profiles,) int64: the cell (row) of every profile
 
     def __len__(self) -> int:
         return len(self.rep)
@@ -193,8 +195,10 @@ def build_cells(
     else:
         radius = sphere_radius(r_um.astype(float), section, section[rep], groups, n_cells,
                                thickness_um)  # fmt: skip
+    mean = sums / np.maximum(n, 1)[:, None]
     return Cells(rep.astype(np.int64), class_id.astype(np.uint8), confidence.astype(np.float32),
-                 n.astype(np.uint16), seen, radius.astype(np.float32))  # fmt: skip
+                 n.astype(np.uint16), seen, radius.astype(np.float32), mean.astype(np.float32),
+                 groups.astype(np.int64))  # fmt: skip
 
 
 def place_cells(profiles: Placed, cells: Cells, proportions: np.ndarray) -> Placed:

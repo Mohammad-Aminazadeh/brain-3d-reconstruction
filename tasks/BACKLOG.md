@@ -84,7 +84,7 @@ Conventions that apply to every task (not repeated below):
 | M7-11 | Cell classes by appearance | detect | High | To do | M7-10 |
 | M7-12 | Local alignment at cell scale | cells | High | Done | M7-07, M7-03 |
 | M7-13 | Linking profiles into 3D cells | cells | High | Done | M7-12 |
-| M7-14 | Cell table and QuPath export | cells | Low | To do | M7-13 |
+| M7-14 | Cell table and QuPath export | cells | Low | Done | M7-13 |
 | M7-15 | Density maps per type | cells | Medium | To do | M7-13, M7-08 |
 | M7-16 | Detection QC | qc | Medium | Done | M7-06 |
 | M7-17 | Real run, slices 1 to 10, all types, linked | integration | Medium | To do | M7-11, M7-13, M7-14, M7-15, M7-16, M4-05 |
@@ -1241,7 +1241,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
   - **Tests:** 17 in `tests/unit/test_cells_link.py`; the align, stage and CLI tests adapted; full suite 453 passed; ruff and mypy clean.
   - **Mutation check:** 15 deliberate faults, all caught. Three were missed at first (closest-first order, equator search, links on pairs without recurrence); the tests were tightened.
 
-#### M7-14 Cell table and QuPath export · Low · To do
+#### M7-14 Cell table and QuPath export · Low · Done
 - **Objective:** the cell table as the main result (F18, F20, C18).
 - **Outputs:**
   - `cells/table.csv`;
@@ -1249,6 +1249,26 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-13. **Files:** `src/brainrec/cells/export.py`.
 - **Acceptance:** every cell in the table; the export of one real slice opens in QuPath on the original slide with the detections in place (owner).
 - **Tests:** `tests/unit/test_cells_export.py`.
+- **Result (2026-11-09):**
+  - **Code:** `cells/export.py`; `run_cells(..., qupath=[ids])` writes the table with the layers and the QuPath files on request; `brainrec cells --qupath A-B`.
+  - **Table:** the C18 columns plus `radius_3d_um` (C16, volume µm, NaN while the thickness is unknown). Probabilities are the chain's mean; source position and features come from the representative; pixel coordinates follow QuPath's convention.
+  - **QuPath:** every profile of the slice as a detection, classified by its cell, with the cell id and measurements; no NaN in the file (QuPath's reader rejects it).
+  - **Disk:** free space is checked before each file (1.2 × the estimate).
+  - **Real run** (`brainrec cells --slices 1-10 --qupath 9`, 71 s with the layers, peak memory 2.6 GB):
+    - `cells/table.csv`: 915 MB for 4,189,396 cells (about 13 GB for 140 slices);
+    - `cells/qupath/9.geojson`: 504 MB for 457,765 detections.
+  - **Note:** with 4.2 million rows the table exceeds Excel's limit of 1,048,576 rows; it is meant for Python, R or QuPath.
+  - **Tests:** 8 in `tests/unit/test_cells_export.py`, the CLI test extended; full suite 461 passed; ruff and mypy clean.
+    - A test found the 3D radius in slice µm while `radius_um` is in volume µm; fixed.
+  - **Mutation check:** 12 deliberate faults, all caught at the first run.
+  - **QuPath import failed at first** (owner, 2026-11-09): "Reduction failed, possible invalid input".
+    - **Narrowing down:** three 1,000-detection test files showed the format was right. The owner's QuPath 0.7.0, run headless on the file, rejected 295 of 457,765 objects (0.06%).
+    - **Cause:** all 295 are outlines that fold over themselves, a side effect of thinning outlines to 32 vertices in detection (M7-05). QuPath's geometry library cannot round such a polygon to its precision, and one bad object stops the whole import.
+    - **Fix:** the export replaces every outline that is not simple (12,784, 2.8% of slice 9) by its convex hull; the cell files keep the original outlines.
+    - **Check:** QuPath reads the new file completely: 457,765 detections in 24 s, classes and measurements present.
+    - **Side finding:** QuPath 0.7 cannot read a class without a colour; the export always writes one.
+    - The repair has 2 tests; mutation check 3 of 3 caught. Two code paths that turned out to have no effect were removed.
+  - **Owner check (2026-11-09):** `cells/qupath/9.geojson` imported on slide 9 in QuPath looks correct (AC14, table and QuPath part passed).
 
 #### M7-15 Density maps per type · Medium · To do
 - **Objective:** 3D density per type (F21, C18).

@@ -424,3 +424,9 @@ Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups
 - **Result:** 4,554,350 profiles form 4,189,396 cells (8% fewer). 356,000 cells span 2 sections and 4,500 span 3; no chain exceeded 8 sections.
 - **Links per aligned pair:** 10.5 to 21.3% of the profiles, against 0.8 to 0.9% at a wrong offset, so about 5% of the links may be false. Median link distance 0.76 µm.
 - **Fewer links than expected:** a model of 3 to 10 µm sections expects 36 to 66% of nuclei to continue. Links are fewer mainly because of detection misses, blur and regions where the alignment does not lock. The cell count therefore still counts part of the nuclei twice. That has to be corrected statistically (Abercrombie) once the section thickness is known.
+
+### Cell table and QuPath export (M7-14, 2026-11-09)
+
+- **`cells/table.csv`:** 4,189,396 rows for slices 1 to 10, 915 MB (218 bytes per cell, so about 13 GB for 140 slices). That is more rows than Excel holds (1,048,576); it is meant for Python, R or QuPath.
+- **QuPath export of slice 9:** 457,765 detections, 504 MB (1,100 bytes per detection), written in 16 s.
+- **Outlines that are not simple:** 2.8% of the outlines of slice 9 fold over or touch themselves. That comes from thinning outlines to 32 vertices in detection (M7-05). QuPath rejects 0.06% of them, and with them the whole import. The export writes such outlines as their convex hull; a fix at the source (thinning without folds) would need detection to run again.

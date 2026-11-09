@@ -83,7 +83,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run all slices without asking before each next one (a slice takes about 16 min)",
     )
-    stage("cells", "cells in 3D: one viewer layer per class", "replace layers of other inputs")
+    c = stage(
+        "cells", "cells in 3D: layers per class, cell table", "replace layers of other inputs"
+    )
+    c.add_argument("--qupath", type=_range, metavar="A-B",
+                   help="also export these slices' detections for QuPath (large files)")  # fmt: skip
     s = sub.add_parser("serve", help="serve the volume and open it in a local Neuroglancer")
     s.add_argument("--port", type=int, default=8000, help="data port; the viewer uses port+1")
     s.add_argument(
@@ -281,7 +285,8 @@ def _detect(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None
 def _cells(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     catalog = _catalog(cfg, args.slices)
     manifest = Manifest(work.manifest)
-    result = run_cells(catalog, work, cfg, manifest, overwrite=args.overwrite)
+    qupath = list(range(args.qupath[0], args.qupath[1] + 1)) if args.qupath else None
+    result = run_cells(catalog, work, cfg, manifest, overwrite=args.overwrite, qupath=qupath)
     ids = [s.id for s in catalog.slices]
     pairs = manifest.get("cells").get("pairs", {}).get("pairs", {})
     if len(ids) > 1:
@@ -303,6 +308,12 @@ def _cells(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     note = f"; {split} chains over {cfg.link_max_sections} sections split" if split else ""
     print(f"cells (slices {args.slices[0]}-{args.slices[1]}): layers {state}, "
           f"{layers['n_cells']} cells from {layers['n_profiles']} profiles{note}")  # fmt: skip
+    print(f"cell table: {work.cell_table} ({layers['table_bytes'] / 1e6:.0f} MB)")
+    exports = manifest.get("cells").get("qupath", {})
+    for k in qupath or []:
+        e = exports[str(k)]
+        print(f"QuPath export of slice {k}: {work.qupath(k)} ({e['n_profiles']} detections, "
+              f"{e['bytes'] / 1e6:.0f} MB); drag it onto the slide in QuPath")  # fmt: skip
 
 
 def _start(root: zarr.Group, manifest: Manifest) -> tuple[float, float, float] | None:
