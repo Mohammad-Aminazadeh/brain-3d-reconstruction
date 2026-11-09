@@ -79,7 +79,7 @@ Conventions that apply to every task (not repeated below):
 | M7-06 | `detect` stage and `brainrec detect` | detect | Medium | Done | M7-05, M4-04 |
 | M7-07 | 3D placement, cell layers and `cells` stage | cells | High | Done | M7-06 |
 | M7-08 | Viewer: cell layers, sliders, tissue opacity | serve | Medium | Done | M7-07 |
-| M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | To do | M7-08 |
+| M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | Done | M7-08 |
 | M7-10 | Detection accuracy | detect | Medium | To do | M7-02, M7-18 (+ labels), M7-09 |
 | M7-11 | Cell classes by appearance | detect | High | To do | M7-10 |
 | M7-12 | Local alignment at cell scale | cells | High | To do | M7-07, M7-03 |
@@ -1269,7 +1269,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: integration
 
-#### M7-09 Real run, slices 1 to 10, one type (first 3D cells) · Medium · To do
+#### M7-09 Real run, slices 1 to 10, one type (first 3D cells) · Medium · Done
 - **Objective:** first blobs on real data.
 - **Steps:**
   - `detect` and `cells` on slices 1 to 10, every profile its own cell, one type;
@@ -1277,6 +1277,30 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
   - owner review in the browser.
 - **Depends on:** M7-08.
 - **Acceptance:** the blobs sit on the nuclei; the viewer stays usable; run time and size are recorded.
+- **Result (2026-11-09, accepted by the owner):**
+  - **Run:** `brainrec detect --slices 1-10` (slices 1 and 2 one at a time with the question between slices, slices 3 to 10 with `--no-ask`), then `brainrec cells --slices 1-10 --overwrite`. All six classes of rules-v1 instead of one type, since the interim classifier already existed (M7-06).
+  - **Detection** (InstanSeg at 2x on MPS, reading included), no errors:
+
+    | slice | nuclei | dropped (radius limits) | blurred tiles | seconds |
+    |---|---|---|---|---|
+    | 1 | 436,334 | 4,763 | 664 / 2,519 | 990 |
+    | 2 | 455,168 | 4,050 | 623 / 2,517 | 989 |
+    | 3 | 438,448 | 4,831 | 711 / 2,549 | 1,007 |
+    | 4 | 447,691 | 4,741 | 706 / 2,551 | 1,329 |
+    | 5 | 435,185 | 5,005 | 910 / 2,433 | 1,523 |
+    | 6 | 475,097 | 5,227 | 865 / 2,841 | 1,470 |
+    | 7 | 486,797 | 5,598 | 895 / 2,741 | 1,716 |
+    | 8 | 465,171 | 6,715 | 550 / 2,820 | 1,740 |
+    | 9 | 457,765 | 7,840 | 1,128 / 2,848 | 1,632 |
+    | 10 | 456,694 | 6,449 | 631 / 2,801 | 1,576 |
+
+    - 3.9 h in total, 23 min per slice on average; 140 slices would take about 54 h (2.3 days), run in batches.
+    - Slices 4 to 10 took about 1.6 times as long per tile as slices 1 to 3 in the same overnight run; the cause was not examined (likely the laptop throttling).
+    - 20 to 40% of the tiles are blurred, in compact patches: input for M7-16.
+  - **Layers:** 4,554,350 cells (every profile its own cell) in 26 s, peak memory 1.5 GB. Neuron 836,929 (18%), Astrocyte-like 1,659,109 (36%), Oligodendrocyte-like 1,469,039 (32%), Microglia-like 287,490 (6%), Vessel-wall 301,783 (7%), Other 0.
+  - **Size:** cell files 488 MB (about 49 MB per slice, so about 6.8 GB for 140 slices, inside the 10 GB of decision 0005); layers 595 MB in 42 files (about 8 GB for 140 slices while unlinked).
+  - **Checks:** headless-Chrome screenshots of slices 1, 5 and 10, zoomed in: the blobs sit on the nuclei; some pale nuclei have no blob (known detector weakness, M7-10).
+  - **Owner review (2026-11-09):** the blobs sit on the nuclei across the slices; the viewer stayed usable, section and 3D panels both worked.
 
 #### M7-17 Real run, slices 1 to 10, all types, linked · Medium · To do
 - **Objective:** close M7 on real data.
