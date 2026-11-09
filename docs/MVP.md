@@ -69,8 +69,8 @@ brainrec --config config/project.yaml serve   -> local Neuroglancer link, open i
 | R12 | Detection run time (2x read of every slide; 1 to 4 days for 140 slices) | M7-01, M7-09 | **Resolved (M7-09):** 23 min per slice including reading (16 to 29 min, slices 1 to 10), about 54 h for 140 slices; `detect` asks before each next slice, so the run is split into batches |
 | R13 | Viewer speed with millions of blobs | M7-01, M7-08 | **Resolved (M7-01, owner 2026-11-07):** 4.19 million test blobs in sharded layers run smoothly; confirmed on real data in M7-09 (4.55 million cells, owner 2026-11-09) |
 | R14 | Labelling time for ground truth (about 1500 cells) | M7-02 | Open (Q16) |
-| R15 | Are the scanned sections adjacent? Decides how many profiles link into one cell | M7-01, M7-12 | Supported (M7-01): up to 33% of nuclei recur within 1.5 µm where the alignment locks on (control 0–9%); gaps of 10 µm or more would give none. Linking is needed |
-| R16 | Local alignment at cell scale (1 to 2 µm) on top of 20 to 80 µm registration offsets | M7-01, M7-12 | Open, main risk of M7: correlation per window locks on in only part of the windows |
+| R15 | Are the scanned sections adjacent? Decides how many profiles link into one cell | M7-01, M7-12 | Partly resolved (M7-12): 5 of 9 pairs of slices 1 to 10 share 9 to 20% of their nuclei (chance 0.8%), so those are adjacent; pairs 3→4, 4→5, 5→6 and 7→8 share none, probably missing sections. The owner assumes no gaps for now and asks the lab (Q28). Linking is needed |
+| R16 | Local alignment at cell scale (1 to 2 µm) on top of 20 to 80 µm registration offsets | M7-01, M7-12 | **Resolved for adjacent pairs (M7-12, decision 0007):** votes of nucleus offsets lock on at 38 to 78% of nodes on real pairs; synthetic fields within 1 µm at 99 to 100% of nodes |
 | R17 | 2D profiles underestimate cell size | M7-05, M7-13 | Mitigated by design: largest linked profile, nucleolus flag |
 | R18 | New dependencies (PyTorch, scikit-learn) | M7-01 | Resolved: owner permitted deep-learning detectors (2026-11-07); installed for the spike |
 

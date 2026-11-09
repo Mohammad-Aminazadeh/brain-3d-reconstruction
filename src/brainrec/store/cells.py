@@ -17,6 +17,8 @@ from brainrec.store.layout import WorkDir
 from brainrec.store.stage import write_atomic
 
 SCHEMA = "brainrec.cells/1"
+PAIR_SCHEMA = "brainrec.cellpair/1"
+PAIR_ARRAYS = ("grid_x_um", "grid_y_um", "dx_um", "dy_um", "node_conf", "links", "link_dist_um")
 # the appearance features of M7-18, in this order (C13)
 FEATURES = (
     "diameter_um",
@@ -186,3 +188,38 @@ def load_profiles(work: WorkDir, slice_id: int) -> tuple[Profiles, dict[str, Any
         )
     profiles.validate(len(meta["class_names"]))
     return profiles, meta
+
+
+def save_cell_pair(work: WorkDir, moving_id: int, arrays: dict[str, np.ndarray],
+                   meta: dict[str, Any]) -> None:  # fmt: skip
+    """Write `cells/pair_{k}.npz` (the PAIR_ARRAYS of C15), then `cells/pair_{k}.json`, both
+    atomically. `grid_x_um` (nx), `grid_y_um` (ny): node positions in the frame of slice k-1;
+    `dx_um`, `dy_um`, `node_conf`: (ny, nx); `links` (m, 2) int32 and `link_dist_um` (m)."""
+    missing = [k for k in PAIR_ARRAYS if k not in arrays]
+    if missing:
+        raise ValueError(f"pair arrays miss {missing}")
+    ny, nx = len(arrays["grid_y_um"]), len(arrays["grid_x_um"])
+    for name in ("dx_um", "dy_um", "node_conf"):
+        if np.shape(arrays[name]) != (ny, nx):
+            raise ValueError(f"{name} has shape {np.shape(arrays[name])}, expected ({ny}, {nx})")
+    buf = io.BytesIO()
+    data: dict[str, Any] = {k: np.asarray(arrays[k]) for k in PAIR_ARRAYS}
+    np.savez_compressed(buf, **data)
+    write_atomic(work.cell_pair(moving_id), buf.getvalue())
+    if "fixed" not in meta:
+        raise ValueError("pair metadata misses the fixed slice id")
+    full = {"schema": PAIR_SCHEMA, "moving": moving_id, **meta}
+    write_atomic(work.cell_pair_meta(moving_id), json.dumps(full, indent=2).encode())
+
+
+def load_cell_pair(work: WorkDir, moving_id: int) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    """The arrays and metadata of `cells/pair_{k}`. FileNotFoundError if the metadata is missing;
+    ValueError on another schema."""
+    meta_path = work.cell_pair_meta(moving_id)
+    if not meta_path.exists():
+        raise FileNotFoundError(f"pair {moving_id - 1}<-{moving_id} has no alignment (run cells)")
+    meta = json.loads(meta_path.read_text())
+    if meta.get("schema") != PAIR_SCHEMA:
+        raise ValueError(f"{meta_path}: unsupported schema {meta.get('schema')!r}")
+    with np.load(work.cell_pair(moving_id)) as z:
+        return {k: z[k] for k in PAIR_ARRAYS}, meta

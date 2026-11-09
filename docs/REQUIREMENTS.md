@@ -97,6 +97,8 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 23. **Long runs ask before each next slide** (owner, 2026-11-08): detection of all 140 slices takes about 39 h. `brainrec detect` therefore asks after each slide whether to start the next one; a later run continues with the slides not yet done. `--no-ask` runs without asking.
 24. **The interim classifier's reference lives in the code** (owner, 2026-11-08): `src/brainrec/detect/rules_v1.json` (2 KB), versioned with the code like a calibrated constant.
 25. **Detection QC** (owner, 2026-11-09, M7-16): a separate command `brainrec qc-cells`, report `qc/cells_report.json` and one review sheet per slice. Slices are compared with up to two neighbours on each side. Folds are dark regions of at least 2× the median tissue density on the 32x level, over at least 0.05 mm². The thresholds are in `docs/ARCHITECTURE.md` (C9, C10b).
+26. **Cell-scale alignment by votes of nucleus offsets** (owner, 2026-11-09, M7-12): method and the settings `align_window_um` 150, `align_search_um` 100 and `align_min_peak_ratio` 2.0, see decision 0007.
+27. **All sections are consecutive, with no gaps** (owner, 2026-11-09, interim until the lab answers Q28): the volume keeps a uniform z spacing. Pairs without recurring nuclei get no links.
 
 ## 5. Proposed assumptions awaiting approval
 
@@ -118,7 +120,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
 13. **Blob shape:** a sphere with the cell's radius. Types differ by colour and optionally by a fixed proportion, as axis-aligned ellipsoids. Shapes turned like the 2D outline would need meshes and are not planned. (Proposed, question Q26)
 14. **Accuracy gates** on held-out labelled crops: detection F1 ≥ 0.90 and median radius error ≤ 15%; targets per type are set after the spike. (Proposed, question Q18)
 15. **Detector choice (decided after M7-01, owner 2026-11-07):** InstanSeg at 2x is the working detector, StarDist the second candidate; the final choice, fine-tuning and possibly a combination follow from the labelled test crops (M7-10); Cellpose 4 is dropped for speed; nucleolus and exact size from 1x patches around larger nuclei; a sharpness score per tile marks uncertain cells. *Original proposal:* a baseline without new dependencies (hematoxylin colour separation, threshold, split of touching nuclei) is compared with pretrained deep-learning detectors (Cellpose, StarDist or InstanSeg). Installing them needs permission. (Proposed, question Q19)
-16. **Local alignment for linking** is computed from the detected nuclei (feature-based, on top of the registration), on a grid of windows; target accuracy 1 to 2 µm. Intensity correlation may only initialise or refine it (F13). (Proposed)
+16. **Local alignment for linking** is computed from the detected nuclei (feature-based, on top of the registration), on a grid of windows; target accuracy 1 to 2 µm. Intensity correlation may only initialise or refine it (F13). (Approved 2026-11-09 as votes of nucleus offsets, decision 0007)
 
 ## 6. Open questions
 
@@ -200,6 +202,7 @@ The owner takes these to the supervisor. Each question says what it decides and 
 |---|---|---|---|---|
 | Q26 | Blob shapes: a sphere per cell, colour per type, optionally a fixed proportion per type (flatter or taller). Truly different shapes need meshes (more work, slower). Is that what "different shapes" should mean? | Layer format (C17) | Spheres, colour per type | M7-00 |
 | Q27 | Colours per type, or a convention used at the institute? | Type table | A colour-blind-safe palette | M7-00 |
+| Q28 | (Lab) Were sections lost or discarded between slides 3/4, 4/5, 5/6 and 7/8? After cell-scale alignment these pairs share no nuclei, while 1→2, 2→3, 6→7, 8→9 and 9→10 share 9 to 20% (M7-12). How many sections are missing per gap? | z positions in the volume (non-uniform spacing), linking | Owner (2026-11-09): assume no gaps until the lab answers | M7-13, M7-17 |
 
 ## 7. Measured facts (M1, `scripts/characterize.py`, read-only)
 
@@ -402,3 +405,16 @@ Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups
   - slices 1 to 5: 0.8 to 2.0% of the tissue, with 4,765 to 9,905 profiles inside folds;
   - slices 6 to 10: 0.0 to 0.2%.
 - **Interim classifier inside folds:** many nuclei in folds are called Neuron because the tissue there stains darker.
+
+### Cell-scale alignment of slices 1 to 10 (M7-12, 2026-11-09, `brainrec cells --slices 1-10`)
+
+- **Method:** votes of nucleus offsets per 100 µm node (decision 0007). 6 s per pair; about 14 min for all 140 slices.
+- **Adjacent pairs** (1→2, 2→3, 6→7, 8→9, 9→10):
+  - 38 to 78% of nodes lock on;
+  - local shifts after the registration, median 13 to 28 µm (up to about 70 µm);
+  - 9 to 20% of all nuclei have a partner within 1.5 µm (chance 0.8%);
+  - neighbouring nodes 100 µm apart agree within 0.3 to 0.6 µm.
+- **Pairs without shared nuclei** (3→4, 4→5, 5→6, 7→8): chance level, also with a ±300 µm search and although 7→8 is well registered.
+  - No non-consecutive pair among slices 1 to 10 shares nuclei, so the order is consistent.
+  - Probably missing sections (Q28); the owner assumes none for now.
+- **Expected for truly adjacent sections:** 36 to 66% recurrence for 3 to 10 µm sections (M7-01 model). The measured 9 to 20% are lower because of detection misses, blur and leftover deformation in unlocked regions.

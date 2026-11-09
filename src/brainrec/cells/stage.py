@@ -1,5 +1,10 @@
-"""Cells stage: cell files of a slice range -> one Neuroglancer layer per class in the volume
-frame (M7-07c; contracts C6, C7, C16, C17). Reads no slide pixels.
+"""Cells stage: cell files of a slice range -> local alignment per pair, then one Neuroglancer
+layer per class in the volume frame (M7-07c, M7-12; contracts C6, C7, C15, C16, C17). Reads no
+slide pixels.
+
+Local alignment (M7-12): per consecutive pair, the displacement field of slice k onto k-1 after
+the pair transform (`cells/pair_{k}.npz`, C15). Resumes per pair: a pair is redone when one of its
+cell files or its pair transform changed; other alignment settings need `overwrite`.
 
 Until linking (M7-13) every profile is its own cell. The frame is the registered volume's
 (C11 metadata in `volume.zarr`): the cells are placed with the transforms, canvas origin and z
@@ -9,6 +14,7 @@ range; results of other inputs (range, cell files, volume, type table) are not r
 """
 
 import hashlib
+import itertools
 import json
 import logging
 import time
@@ -18,16 +24,18 @@ import numpy as np
 import zarr
 
 from brainrec.catalog import Catalog, ProjectConfig
+from brainrec.cells.align import METHOD, AlignParams, align_pair
 from brainrec.cells.layers import write_layer
 from brainrec.cells.place import Placed, VolumeFrame, place_profiles
-from brainrec.registration import Transform2D
+from brainrec.registration import PairResult, Transform2D
 from brainrec.registration.chain import load_chained
 from brainrec.store import Manifest, StageExistsError, StageResult, WorkDir, fingerprint
-from brainrec.store.cells import load_profiles
+from brainrec.store.cells import load_profiles, save_cell_pair
 
 log = logging.getLogger(__name__)
 STAGE = "cells"
 VERSION = 1
+ALIGN_VERSION = 1  # bump when the alignment changes in a way that should invalidate old fields
 
 
 class CellsInputError(ValueError):
@@ -95,6 +103,82 @@ def _signature(catalog: Catalog, work: WorkDir, cfg: ProjectConfig, frame: Volum
     }
 
 
+def _align_signature(cfg: ProjectConfig) -> dict:
+    return {
+        "version": ALIGN_VERSION,
+        "method": METHOD,
+        "align_grid_um": cfg.align_grid_um,
+        "align_window_um": cfg.align_window_um,
+        "align_search_um": cfg.align_search_um,
+        "align_min_peak_ratio": cfg.align_min_peak_ratio,
+    }
+
+
+def _pair_inputs(work: WorkDir, fixed: int, moving: int) -> dict:
+    return {
+        "fixed_cells": fingerprint(work.cell_profiles(fixed)),
+        "moving_cells": fingerprint(work.cell_profiles(moving)),
+        "pair_sha256": hashlib.sha256(work.pair_transform(moving).read_bytes()).hexdigest(),
+    }
+
+
+def align_pairs(
+    catalog: Catalog,
+    work: WorkDir,
+    cfg: ProjectConfig,
+    manifest: Manifest,
+    overwrite: bool = False,
+) -> StageResult:
+    """The displacement field of every consecutive pair of `catalog` (C15), keyed by the moving
+    slice; skips pairs whose cell files and pair transform are unchanged. FileNotFoundError naming
+    unregistered pairs; StageExistsError if fields of other alignment settings exist, unless
+    `overwrite` (then every pair is redone)."""
+    ids = [s.id for s in catalog.slices]
+    pairs = list(itertools.pairwise(ids))
+    missing = [f"{a}<-{b}" for a, b in pairs if not work.pair_transform(b).exists()]
+    if missing:
+        raise FileNotFoundError(f"pairs {', '.join(missing)} are not registered: run "
+                                "`brainrec register`")  # fmt: skip
+    signature = _align_signature(cfg)
+    state = (manifest.get(STAGE) or {}).get("pairs")
+    if state is not None and state["signature"] != signature:
+        if not overwrite:
+            changed = sorted(k for k in signature if state["signature"].get(k) != signature[k])
+            raise StageExistsError(
+                f"cell alignment exists from other settings ({', '.join(changed)}); "
+                "use overwrite to redo it"
+            )
+        state = None
+    done: dict[str, dict] = dict(state["pairs"]) if state else {}
+    params = AlignParams.from_config(cfg)
+    result = StageResult()
+    for fixed, moving in pairs:
+        inputs = _pair_inputs(work, fixed, moving)
+        old = done.get(str(moving))
+        files = (work.cell_pair(moving), work.cell_pair_meta(moving))
+        if old is not None and old["inputs"] == inputs and all(f.exists() for f in files):
+            result.skipped.append(moving)
+            continue
+        t0 = time.monotonic()
+        a, _ = load_profiles(work, fixed)
+        b, _ = load_profiles(work, moving)
+        pr = PairResult.from_dict(json.loads(work.pair_transform(moving).read_text()))
+        aligned = align_pair(np.c_[a.x_um, a.y_um], pr.transform.apply(np.c_[b.x_um, b.y_um]),
+                             params)  # fmt: skip
+        summary = {**aligned.summary(), "seconds": round(time.monotonic() - t0, 1)}
+        arrays = {**aligned.field.arrays(), "links": np.zeros((0, 2), np.int32),
+                  "link_dist_um": np.zeros(0, np.float32)}  # fmt: skip
+        save_cell_pair(work, moving, arrays, {"fixed": fixed, **summary})
+        done[str(moving)] = {"inputs": inputs, "summary": summary}
+        manifest.set(STAGE, {**(manifest.get(STAGE) or {}),
+                             "pairs": {"signature": signature, "pairs": done}})  # fmt: skip
+        result.done.append(moving)
+        log.info("cells: pair %d<-%d %s, %.0f%% of nodes locked, recurrence %.1f%% (chance %.1f%%)",
+                 fixed, moving, summary["status"], 100 * summary["share_locked"],
+                 100 * summary["recurrence"], 100 * summary["recurrence_chance"])  # fmt: skip
+    return result
+
+
 def run_cells(
     catalog: Catalog,
     work: WorkDir,
@@ -102,13 +186,16 @@ def run_cells(
     manifest: Manifest,
     overwrite: bool = False,
 ) -> StageResult:
-    """Place the profiles of the slices of `catalog` in the volume frame and write one layer
-    per class (`cells/layer_<name>/`). Skips the work if the layers exist from the same inputs.
-    Layers of other inputs: StageExistsError unless `overwrite`. FileNotFoundError without a
-    volume or cell files; CellsInputError if volume, registration or cell files disagree."""
+    """Align every consecutive pair locally (`align_pairs`), then place the profiles of the
+    slices of `catalog` in the volume frame and write one layer per class
+    (`cells/layer_<name>/`). Skips the layers if they exist from the same inputs. Layers of other
+    inputs: StageExistsError unless `overwrite`. FileNotFoundError without a volume, cell files
+    or pair transforms; CellsInputError if volume, registration or cell files disagree.
+    `StageResult` lists the slices of the layers; the pairs are in the manifest (`cells.pairs`)."""
     ids = [s.id for s in catalog.slices]
     frame = volume_frame(work)
     _check_inputs(catalog, work, cfg, frame)
+    align_pairs(catalog, work, cfg, manifest, overwrite)
     signature = _signature(catalog, work, cfg, frame)
     state = (manifest.get(STAGE) or {}).get("layers")
     layers = [work.cell_layer(t.name) for t in cfg.cell_types]

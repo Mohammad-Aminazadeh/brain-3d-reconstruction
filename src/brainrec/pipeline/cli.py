@@ -282,6 +282,16 @@ def _cells(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     catalog = _catalog(cfg, args.slices)
     manifest = Manifest(work.manifest)
     result = run_cells(catalog, work, cfg, manifest, overwrite=args.overwrite)
+    ids = [s.id for s in catalog.slices]
+    pairs = manifest.get("cells").get("pairs", {}).get("pairs", {})
+    if len(ids) > 1:
+        print(f"{'pair':<10}{'status':<15}{'locked':>8}{'shift um':>10}{'recurrence':>12}"
+              f"{'chance':>8}")  # fmt: skip
+    for fixed, moving in itertools.pairwise(ids):
+        s = pairs[str(moving)]["summary"]
+        print(f"{f'{fixed}<-{moving}':<10}{s['status']:<15}{100 * s['share_locked']:>7.0f}%"
+              f"{s['median_shift_um']:>10.1f}{100 * s['recurrence']:>11.1f}%"
+              f"{100 * s['recurrence_chance']:>7.1f}%")  # fmt: skip
     counts = manifest.get("cells")["layers"]["counts"]
     print(f"{'class':<22}{'cells':>10}  layer")
     for t in cfg.cell_types:

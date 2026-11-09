@@ -36,7 +36,7 @@ Each slice is a scanned tissue section of about 3.8 GB (402 GB for all 140). The
 
 ## Current development status
 
-**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). M7-18 appearance groups done (2026-11-08): six appearance classes confirmed by the owner. M7-19 draft labels (1603 points, not ground truth) ready for expert correction in QuPath. Cell contracts (M7-00) fixed and approved. Synthetic nuclei and 3D cells (M7-03) and the cell file (M7-04) done. Nucleus detection over a whole slice (M7-05) and the `detect` stage with the interim classifier rules-v1 (M7-06) done. Cells placed in 3D with one layer per class (M7-07) and the cell layers in the viewer (M7-08) done. First 3D cells on real data (M7-09, 2026-11-09): slices 1 to 10, 4.55 million cells, accepted by the owner. Detection QC (M7-16, `brainrec qc-cells`) done: folds flagged on slices 1, 3 and 5, no other flags. Next: M7-12 local alignment at cell scale.**
+**Phase: M4 quality control done (2026-11-07). New goal since 2026-11-06: cells in 3D (milestone M7, before M5). M7-01 spike and M7-02 label crops and evaluation done (2026-11-08). M7-18 appearance groups done (2026-11-08): six appearance classes confirmed by the owner. M7-19 draft labels (1603 points, not ground truth) ready for expert correction in QuPath. Cell contracts (M7-00) fixed and approved. Synthetic nuclei and 3D cells (M7-03) and the cell file (M7-04) done. Nucleus detection over a whole slice (M7-05) and the `detect` stage with the interim classifier rules-v1 (M7-06) done. Cells placed in 3D with one layer per class (M7-07) and the cell layers in the viewer (M7-08) done. First 3D cells on real data (M7-09, 2026-11-09): slices 1 to 10, 4.55 million cells, accepted by the owner. Detection QC (M7-16, `brainrec qc-cells`) done: folds flagged on slices 1, 3 and 5, no other flags. Local alignment at cell scale (M7-12) done: 5 of 9 neighbouring pairs share 9 to 20% of their nuclei after alignment; 4 pairs share none (probably missing sections, to be checked with the lab). Next: M7-13 linking.**
 
 | Item | Status |
 |---|---|
@@ -62,7 +62,7 @@ cp config/project.example.yaml config/project.yaml          # adjust paths if ne
 .venv/bin/brainrec --config config/project.yaml volume --slices 1-10      # registered, tissue only
 .venv/bin/brainrec --config config/project.yaml detect --slices 1-10      # nuclei, classified; asks before each next slice
 .venv/bin/brainrec --config config/project.yaml qc-cells --slices 1-10    # detection QC: density, blur, folds, flags, review crops
-.venv/bin/brainrec --config config/project.yaml cells --slices 1-10       # 3D cells, one layer per class (after volume)
+.venv/bin/brainrec --config config/project.yaml cells --slices 1-10       # local alignment per pair, 3D cells, one layer per class (after volume)
 .venv/bin/brainrec --config config/project.yaml serve        # prints a viewer link; open it in Chrome
 .venv/bin/pytest                                             # tests
 .venv/bin/ruff check src tests scripts && .venv/bin/ruff format --check src tests scripts && .venv/bin/mypy

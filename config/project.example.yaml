@@ -15,3 +15,8 @@ qc_cells_max_blurred_share: 0.5   # of the tiles
 qc_fold_od_ratio: 2.0             # x the median tissue optical density
 qc_fold_min_area_mm2: 0.05
 qc_fold_max_share: 0.01           # of the tissue area
+# Local alignment at cell scale (M7-12, approved 2026-11-09; these are the defaults)
+align_grid_um: 100.0          # node spacing of the displacement field
+align_window_um: 150.0        # radius of the nuclei voting per node
+align_search_um: 100.0        # largest local offset searched (coarse stage)
+align_min_peak_ratio: 2.0     # a node locks when its peak has 2x the votes of the next peak

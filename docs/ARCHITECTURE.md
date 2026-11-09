@@ -241,6 +241,12 @@ run_detect(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwr
 align_local(fixed: Profiles, moving: Profiles, t_pair: Transform2D, cfg) -> LocalField
     # cell-scale displacement (µm) on a grid inside the overlap, on top of the pair transform;
     # from the nuclei (feature-based, robust fit per window); confidence per grid node
+    # implemented (M7-12, decision 0007), cells/align.py: align_pair(fixed_xy, moving_xy,
+    #   AlignParams.from_config(cfg)) -> PairAlignment(field: Field, status, counts, recurrence)
+    #   with moving_xy already through the pair transform; vote(...) per node; smooth(...)
+    #   drops outliers and fills; Field(grid_x_um, grid_y_um, dx_um, dy_um, node_conf)
+    #   .displacement(xy) bilinear; cells/stage.py: align_pairs(catalog, work, cfg, manifest,
+    #   overwrite) -> StageResult of moving ids, called by run_cells
 link_profiles(fixed, moving, field: LocalField, cfg) -> Links      # one-to-one, within a tolerance
 build_cells(profiles: dict[int, Profiles], links: dict[int, Links]) -> Cells3D
     # chains of linked profiles; representative = the largest profile
@@ -329,6 +335,8 @@ brainrec --config C detect --slices A-B [--overwrite] [--no-ask]   # implemented
     # table of nuclei, dropped (radius limits), blurred tiles and seconds per slice
 brainrec --config C cells --slices A-B [--overwrite]      # M7-07 (implemented: place, layers; table of
     # cells per class); later link (M7-13), table, density
+    # M7-12: first a table per pair (status, share of locked nodes, median shift, recurrence,
+    # chance level)
 brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512] [--tissue-opacity F]
     # viewer on port+1; adds every cells/layer_<name> that exists (M7-08) and starts on the
     # plane of the first slice with cells
@@ -536,6 +544,13 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   - `link_dist_um`.
   - `pair_{k}.json` records `{"schema": "brainrec.cellpair/1", "method", "n_links", "share_linked", "median_link_um"}`.
 - **Method:** the method of the field is chosen in M7-12. M7-01 showed that one correlation per window is not enough: it needs larger context, a smooth field and a robust fit to the nuclei.
+- **As implemented (M7-12, decision 0007):**
+  - **Method `nuclei-votes/1`:** votes of nucleus offsets per node, coarse then fine (details in the decision note).
+  - **Grid:** `grid_x_um` (nx) and `grid_y_um` (ny) are the axes of a regular grid; `dx_um`, `dy_um` and `node_conf` are (ny, nx) float32.
+  - **Links:** `links` and `link_dist_um` stay empty until M7-13.
+  - **`pair_{k}.json`:** `{"schema", "moving", "fixed", "method", "status": "aligned" | "no_recurrence", "n_nodes", "n_supported", "n_locked", "share_locked", "coarse_share_locked", "median_shift_um", "recurrence", "recurrence_chance", "seconds"}`. The link fields follow in M7-13.
+  - **Manifest `cells.pairs`:** `{"signature": {version, method, align settings}, "pairs": {"<k>": {"inputs": {fixed_cells, moving_cells, pair_sha256}, "summary"}}}`.
+  - **I/O:** `store/cells.py`, `save_cell_pair` and `load_cell_pair`.
 - **Linking rule:**
   - after local alignment, profiles in k and k−1 are linked if their centres are closer than max(`link_tolerance_um` = 1.5, 0.5 × the smaller radius);
   - one-to-one, closest first;
@@ -613,6 +628,9 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   | `detect_min_sharpness` | 100 |
   | `cell_types` | the C14 table |
   | `align_grid_um` | 100 |
+  | `align_window_um` | 150 (M7-12) |
+  | `align_search_um` | 100 (M7-12) |
+  | `align_min_peak_ratio` | 2.0 (M7-12) |
   | `link_tolerance_um` | 1.5 |
   | `link_max_sections` | 8 |
   | `density_grid_um` | 50 |

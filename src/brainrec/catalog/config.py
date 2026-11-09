@@ -82,6 +82,13 @@ class ProjectConfig(BaseModel):
     detect_min_sharpness: float = 100.0  # tiles below are blurred (level-0 scale of M7-01)
     cell_types: list[CellType] = Field(default_factory=lambda: list(DEFAULT_CELL_TYPES))
 
+    # local alignment at cell scale (contract C9, C15; method approved 2026-11-09, M7-12): votes
+    # of nucleus-to-nucleus offsets per window, on top of the pair transform
+    align_grid_um: float = Field(default=100.0, gt=0.0)  # node spacing of the displacement field
+    align_window_um: float = Field(default=150.0, gt=0.0)  # radius of the nuclei used per node
+    align_search_um: float = Field(default=100.0, gt=0.0)  # largest local offset searched
+    align_min_peak_ratio: float = Field(default=2.0, gt=1.0)  # peak vs next-best peak to lock on
+
     # detection QC (M7-16, approved 2026-11-09; Proposed values, calibrated on real slices 1 to
     # 10: densities 1027 to 1147 per mm², class shares within about 15%, 20 to 40% blurred tiles,
     # folds 0.0 to 2.0% of the tissue). Ratios compare a slice with the median of up to two

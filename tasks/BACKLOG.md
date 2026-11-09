@@ -82,7 +82,7 @@ Conventions that apply to every task (not repeated below):
 | M7-09 | Real run, slices 1 to 10, one type (first 3D cells) | integration | Medium | Done | M7-08 |
 | M7-10 | Detection accuracy | detect | Medium | To do | M7-02, M7-18 (+ labels), M7-09 |
 | M7-11 | Cell classes by appearance | detect | High | To do | M7-10 |
-| M7-12 | Local alignment at cell scale | cells | High | To do | M7-07, M7-03 |
+| M7-12 | Local alignment at cell scale | cells | High | Done | M7-07, M7-03 |
 | M7-13 | Linking profiles into 3D cells | cells | High | To do | M7-12 |
 | M7-14 | Cell table and QuPath export | cells | Low | To do | M7-13 |
 | M7-15 | Density maps per type | cells | Medium | To do | M7-13, M7-08 |
@@ -1154,7 +1154,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
     - cells dropped on the deepest level (a test with a dense cluster now reaches it);
     - a coarse level that is not a random sample (the test cells were already in random order; they are now sorted by position first).
 
-#### M7-12 Local alignment at cell scale · High · To do
+#### M7-12 Local alignment at cell scale · High · Done
 - **Objective:** per pair, a displacement field k → k−1 accurate to 1 to 2 µm, computed from the nuclei on top of the pair transform (C15, R16).
 - **Subtasks:**
   - **M7-12a** coarse offset per window, by correlating nuclei maps drawn from the profile tables (no slide reads);
@@ -1166,6 +1166,37 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
   - synthetic: a known local deformation is recovered within 1 µm at 90% of the grid nodes;
   - real: the share of recurring nuclei per pair is reported.
 - **Tests:** `tests/unit/test_cells_align.py`.
+- **Result (2026-11-09; method and three config fields approved by the owner before the code, decision 0007):**
+  - **Method `nuclei-votes/1`:**
+    - Around each node, the nuclei of k−1 vote for their offsets to the nuclei of k.
+    - Coarse nodes every 400 µm search ±100 µm; fine nodes every 100 µm search ±10 µm around the coarse field.
+    - Lock: peak ≥ 2× the next peak; outliers dropped, gaps filled with confidence 0.
+    - A pair with fewer than 10% locked coarse nodes is `no_recurrence`.
+  - **Code:** `cells/align.py`; `align_pairs` in `cells/stage.py`, run by `brainrec cells` before the layers, resumable per pair; `store/cells.py` `save_cell_pair`/`load_cell_pair`.
+  - **Synthetic acceptance:** sections cut from 3D nuclei with a smooth deformation and a leftover registration error of about 9 to 25 µm. The field is within 1 µm of the truth at 99 to 100% of nodes (median 0.2 µm), also with half of the nuclei missed. Sections 15 µm apart give `no_recurrence`.
+  - **Real slices 1 to 10** (`brainrec cells --slices 1-10`: 54 s for 9 pairs, peak memory 0.75 GB, 18 files, 2.6 MB):
+
+    | pair | status | nodes locked | median shift | recurring nuclei (chance) |
+    |---|---|---|---|---|
+    | 1→2 | aligned | 42% | 23.4 µm | 10.4% (0.9%) |
+    | 2→3 | aligned | 38% | 27.7 µm | 8.7% (0.8%) |
+    | 3→4 | no recurrence | 0% | – | 0.8% (0.8%) |
+    | 4→5 | no recurrence | 0% | – | 0.8% (0.8%) |
+    | 5→6 | no recurrence | 0% | – | 0.9% (0.9%) |
+    | 6→7 | aligned | 78% | 18.1 µm | 18.4% (0.8%) |
+    | 7→8 | no recurrence | 0% | – | 0.8% (0.8%) |
+    | 8→9 | aligned | 77% | 12.8 µm | 19.7% (0.8%) |
+    | 9→10 | aligned | 58% | 17.9 µm | 13.9% (0.8%) |
+
+    - Recurrence counts all nuclei of k−1, including regions without a lock.
+  - **Spike checks** (scratchpad, cell files only):
+    - Neighbouring nodes 100 µm apart agree within 0.3 to 0.6 µm.
+    - Pairs without recurrence stay at chance also with a ±300 µm search.
+    - All 36 non-consecutive pairs among slices 1 to 10 stay at chance (no swapped slides).
+  - **Visual check:** `spike/M7-12/field_check.jpg` in the work dir. With the field, matching nuclei of both sections lie on each other; with the pair transform alone, hardly any do.
+  - **Open:** the four pairs without recurrence probably have missing sections between them. The owner assumes for now that all sections are consecutive and checks with the lab (question Q28).
+  - **Tests:** 9 in `tests/unit/test_cells_align.py`, the CLI test extended; full suite 436 passed; ruff and mypy clean.
+  - **Mutation check:** 16 deliberate faults, all caught. Three were missed at first (peak not refined below a bin, fine-stage outliers kept, nodes with one neighbour judged); the tests were tightened and drop-and-fill became one function used by both stages.
 
 #### M7-13 Linking profiles into 3D cells · High · To do
 - **Objective:** one cell, one blob (F19).

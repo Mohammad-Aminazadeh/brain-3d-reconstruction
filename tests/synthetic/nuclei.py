@@ -302,14 +302,16 @@ def cut_sections(
     scale_range: tuple[float, float] = (0.97, 1.03),
     deform_um: float = 10.0,
     min_profile_r_um: float = 1.6,
+    wavelength_um: tuple[float, float] = (150.0, 600.0),
 ) -> SectionStack:
     """Cut `cells` into consecutive sections k = 0 .. n-1 covering depth [k t, (k + 1) t).
 
     A cell gives a profile in section k if its largest cut radius within the section,
     sqrt(R² - dz²) with dz the distance from its centre to the section, is at least
     `min_profile_r_um` (as seen in a brightfield section, which shows its whole thickness).
-    Each section is deformed by a smooth field of amplitude up to `deform_um` and moved by a
-    random similarity; profiles are given in the slice frame, radii in slice µm."""
+    Each section is deformed by a smooth field of amplitude up to `deform_um` (sine waves of
+    `wavelength_um`) and moved by a random similarity; profiles are given in the slice frame,
+    radii in slice µm."""
     rng = np.random.default_rng(seed)
     transforms, deformations, sections = [], [], []
     ref_xy = np.stack([cells.x_um, cells.y_um], axis=1)
@@ -322,7 +324,7 @@ def cut_sections(
         )
         d = Deformation(
             rng.uniform(-deform_um / 2, deform_um / 2, (2, 2)),
-            rng.uniform(150.0, 600.0, (2, 2)),
+            rng.uniform(*wavelength_um, (2, 2)),
             rng.uniform(0, 2 * np.pi, (2, 2)),
         )
         lo, hi = k * thickness_um, (k + 1) * thickness_um
