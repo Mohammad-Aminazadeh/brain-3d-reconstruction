@@ -459,11 +459,13 @@ def test_cells_builds_layers_and_reports(tmp_path, capsys):
     cfg = _write_config(tmp_path, tmp_path / "data", z_spacing_um=5.0)
     _run(cfg, "cells", "--slices", "1-2")
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0].split() == ["pair", "status", "locked", "shift", "um", "recurrence", "chance"]
+    assert lines[0].split() == ["pair", "status", "locked", "shift", "um", "recurrence", "chance",
+                                "linked", "chance"]  # fmt: skip
     assert lines[1].split()[:3] == ["1<-2", "no_recurrence", "0%"]  # 40 random cells per slice
+    assert lines[1].split()[-2:] == ["0.0%", "0.0%"]  # no links without recurrence
     assert lines[2].split() == ["class", "cells", "layer"]
     assert lines[3].startswith("Neuron") and lines[3].rstrip().endswith("layer_neuron")
-    assert lines[-1].startswith("cells (slices 1-2): layers built, 80 cells")
+    assert lines[-1] == "cells (slices 1-2): layers built, 80 cells from 80 profiles"
     _run(cfg, "cells", "--slices", "1-2")
     assert "layers up to date" in capsys.readouterr().out.splitlines()[-1]
 

@@ -245,12 +245,18 @@ align_local(fixed: Profiles, moving: Profiles, t_pair: Transform2D, cfg) -> Loca
     #   AlignParams.from_config(cfg)) -> PairAlignment(field: Field, status, counts, recurrence)
     #   with moving_xy already through the pair transform; vote(...) per node; smooth(...)
     #   drops outliers and fills; Field(grid_x_um, grid_y_um, dx_um, dy_um, node_conf)
-    #   .displacement(xy) bilinear; cells/stage.py: align_pairs(catalog, work, cfg, manifest,
-    #   overwrite) -> StageResult of moving ids, called by run_cells
+    #   .displacement(xy) bilinear; cells/stage.py: align_and_link_pairs(catalog, work, cfg,
+    #   manifest, overwrite) -> StageResult of moving ids (field and links per pair), run_cells
 link_profiles(fixed, moving, field: LocalField, cfg) -> Links      # one-to-one, within a tolerance
 build_cells(profiles: dict[int, Profiles], links: dict[int, Links]) -> Cells3D
     # chains of linked profiles; representative = the largest profile
 place_cells(cells: Cells3D, chained: dict[int, Transform2D], spec) -> Placed  # volume frame, µm
+    # implemented (M7-13), cells/link.py: link_profiles(fixed: LinkSide, moving: LinkSide,
+    #   tolerance_um) -> Links(moving, fixed, dist_um), moving already through pair transform and
+    #   field; build_chains(sizes, links, max_sections) -> (label per profile, n_split);
+    #   build_cells(label, r_um, class_prob, nucleolus, section, thickness_um) -> Cells(rep,
+    #   class_id, confidence, n_profiles, nucleolus, radius_3d_um); sphere_radius(...);
+    #   place_cells(placed_profiles, cells, proportions) -> Placed (the representatives)
     # implemented for single profiles (M7-07), cells/place.py: VolumeFrame(slice_ids, origin_um,
     #   z_spacing_um, transforms) from the volume's C11 metadata; place_profiles(profiles,
     #   slice_id, frame, proportions) -> Placed (every profile its own cell until M7-13)
@@ -270,6 +276,8 @@ run_cells(catalog, work, cfg, manifest, overwrite=False) -> StageResult
     #   the z spacing or the class names differ); manifest "cells" -> "layers": signature (range,
     #   cell-file fingerprints, volume hash, type table), counts, seconds; up to date -> skipped;
     #   layers of other inputs: StageExistsError unless overwrite
+    # M7-13: one blob per chain; the layer signature adds the pair-file fingerprints and
+    #   link_max_sections; the entry adds n_profiles, n_cells, n_split_chains, chain_lengths
 
 # store                              # implemented (M2)
 WorkDir(root).manifest, .volume        # the only place that knows file names
@@ -547,9 +555,11 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
 - **As implemented (M7-12, decision 0007):**
   - **Method `nuclei-votes/1`:** votes of nucleus offsets per node, coarse then fine (details in the decision note).
   - **Grid:** `grid_x_um` (nx) and `grid_y_um` (ny) are the axes of a regular grid; `dx_um`, `dy_um` and `node_conf` are (ny, nx) float32.
-  - **Links:** `links` and `link_dist_um` stay empty until M7-13.
-  - **`pair_{k}.json`:** `{"schema", "moving", "fixed", "method", "status": "aligned" | "no_recurrence", "n_nodes", "n_supported", "n_locked", "share_locked", "coarse_share_locked", "median_shift_um", "recurrence", "recurrence_chance", "seconds"}`. The link fields follow in M7-13.
-  - **Manifest `cells.pairs`:** `{"signature": {version, method, align settings}, "pairs": {"<k>": {"inputs": {fixed_cells, moving_cells, pair_sha256}, "summary"}}}`.
+  - **Links (M7-13):** `links` holds (index in k, index in k−1); a pair with status `no_recurrence` gets none.
+  - **`pair_{k}.json`:** `{"schema", "moving", "fixed", "method", "status": "aligned" | "no_recurrence", "n_nodes", "n_supported", "n_locked", "share_locked", "coarse_share_locked", "median_shift_um", "recurrence", "recurrence_chance", "n_links", "share_linked", "median_link_um", "share_linked_chance", "seconds"}`.
+    - `share_linked` is the share of k−1's profiles linked to k.
+    - `share_linked_chance` is the same at a deliberately wrong offset: an estimate of the false links.
+  - **Manifest `cells.pairs`:** `{"signature": {version, method, align settings, link_tolerance_um}, "pairs": {"<k>": {"inputs": {fixed_cells, moving_cells, pair_sha256}, "summary"}}}`.
   - **I/O:** `store/cells.py`, `save_cell_pair` and `load_cell_pair`.
 - **Linking rule:**
   - after local alignment, profiles in k and k−1 are linked if their centres are closer than max(`link_tolerance_um` = 1.5, 0.5 × the smaller radius);
@@ -568,6 +578,10 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
 - **Radius:** the representative `r_um` × the transform's scale, as a sphere in µm × the class proportions (C14).
 - **3D size estimate:** once `section_thickness_um` is set, an additional measurement fitted from the chain's radii over z.
 - **Cell id:** uint64 = slice id × 2³² + profile index of the representative. Stable while detection is unchanged.
+- **As implemented (M7-13):**
+  - **Taken from the representative:** `det_conf` and `blurred`.
+  - **From any profile:** the nucleolus counts as seen if any profile of the chain shows it.
+  - **3D radius:** fitted with the equator searched within the representative's section, from R² = ρ² + d² per profile. It is NaN while `section_thickness_um` is null, and is not a layer property; it is meant for the cell table (M7-14).
 
 **C17 Cell layers (Neuroglancer precomputed annotations; prototype tested with 4.19 million cells in M7-01).**
 - **Annotations:**

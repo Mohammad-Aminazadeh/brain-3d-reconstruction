@@ -11,8 +11,9 @@ the nuclei alone (no slide reads), in the frame of slice k-1:
 2. **Lock.** A node is locked when its peak holds at least MIN_VOTES votes and at least
    `align_min_peak_ratio` x the votes of the best other peak (more than 6 µm away).
 3. **Coarse, then fine.** Coarse nodes every COARSE_FACTOR x `align_grid_um` search
-   ±`align_search_um`; the fine nodes every `align_grid_um` search ±FINE_SEARCH_UM around the
-   coarse field.
+   ±`align_search_um`. Then FINE_PASSES fine passes on nodes every `align_grid_um`: each nucleus
+   of k is first moved by the current field at its own position (so the field's gradient within a
+   window does not smear the votes), and the remainder is voted within ±FINE_SEARCH_UM.
 4. **Field.** Locked nodes far from their locked neighbours are dropped as outliers; nodes without
    a lock are filled from the locked ones (normalised Gaussian averaging, wider until all are
    filled) and get confidence 0.
@@ -36,7 +37,8 @@ from brainrec.catalog import ProjectConfig
 
 METHOD = "nuclei-votes/1"
 COARSE_FACTOR = 4  # coarse node spacing = 4 x align_grid_um (400 µm by default)
-FINE_SEARCH_UM = 10.0  # fine search around the coarse field
+FINE_SEARCH_UM = 10.0  # fine search around the current field
+FINE_PASSES = 2  # fine passes, each on top of the field of the pass before
 PEAK_TOL_UM = 1.5  # votes within this distance of the peak belong to it
 BIN_UM = 1.0  # vote histogram bin
 EXCLUDE_UM = 6.0  # the best other peak lies further away than this
@@ -286,13 +288,19 @@ def align_pair(fixed: np.ndarray, moving: np.ndarray, params: AlignParams) -> Pa
                              _recurrence(fixed, moving + CHANCE_OFFSET_UM))  # fmt: skip
     coarse = Field(cxs, cys, c_field[..., 0], c_field[..., 1], np.zeros(c_locked.shape))
 
-    # fine: narrow search around the coarse field
+    # fine: every nucleus moved by the current field at its own position, so a steep field does
+    # not smear the votes within a window; the remainder is voted within ±FINE_SEARCH_UM
     gx, gy = np.meshgrid(xs, ys)
-    centres = coarse.displacement(np.c_[gx.ravel(), gy.ravel()]).reshape(len(ys), len(xs), 2)
-    shift, locked, conf, sup = _solve(fixed, fixed_tree, moving, moving_tree, xs, ys, centres,
-                                      FINE_SEARCH_UM, params)  # fmt: skip
-    filled, locked = smooth(shift, locked, OUTLIER_UM[1], centres)
-    field = Field(xs, ys, filled[..., 0], filled[..., 1], np.where(locked, conf, 0.0))
+    nodes = np.c_[gx.ravel(), gy.ravel()]
+    field = coarse
+    for _ in range(FINE_PASSES):
+        base = field.displacement(nodes).reshape(len(ys), len(xs), 2)
+        moved = moving + field.displacement(moving)
+        rest, locked, conf, sup = _solve(fixed, fixed_tree, moved, cKDTree(moved), xs, ys,
+                                         np.zeros_like(base), FINE_SEARCH_UM, params)  # fmt: skip
+        shift = base + rest
+        filled, locked = smooth(shift, locked, OUTLIER_UM[1], base)
+        field = Field(xs, ys, filled[..., 0], filled[..., 1], np.where(locked, conf, 0.0))
     moved = moving + field.displacement(moving)
     med_shift = float(np.median(np.hypot(*shift[locked].T))) if locked.any() else 0.0
     return PairAlignment(

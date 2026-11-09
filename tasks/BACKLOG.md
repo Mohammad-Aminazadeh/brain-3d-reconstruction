@@ -83,7 +83,7 @@ Conventions that apply to every task (not repeated below):
 | M7-10 | Detection accuracy | detect | Medium | To do | M7-02, M7-18 (+ labels), M7-09 |
 | M7-11 | Cell classes by appearance | detect | High | To do | M7-10 |
 | M7-12 | Local alignment at cell scale | cells | High | Done | M7-07, M7-03 |
-| M7-13 | Linking profiles into 3D cells | cells | High | To do | M7-12 |
+| M7-13 | Linking profiles into 3D cells | cells | High | Done | M7-12 |
 | M7-14 | Cell table and QuPath export | cells | Low | To do | M7-13 |
 | M7-15 | Density maps per type | cells | Medium | To do | M7-13, M7-08 |
 | M7-16 | Detection QC | qc | Medium | Done | M7-06 |
@@ -1198,7 +1198,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
   - **Tests:** 9 in `tests/unit/test_cells_align.py`, the CLI test extended; full suite 436 passed; ruff and mypy clean.
   - **Mutation check:** 16 deliberate faults, all caught. Three were missed at first (peak not refined below a bin, fine-stage outliers kept, nodes with one neighbour judged); the tests were tightened and drop-and-fill became one function used by both stages.
 
-#### M7-13 Linking profiles into 3D cells · High · To do
+#### M7-13 Linking profiles into 3D cells · High · Done
 - **Objective:** one cell, one blob (F19).
 - **Subtasks:**
   - **M7-13a** link rule (C15);
@@ -1208,6 +1208,38 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-12. **Files:** `src/brainrec/cells/link.py`, `stage.py`.
 - **Acceptance:** AC13 on synthetic data. The same code on sections with gaps leaves every profile its own cell.
 - **Tests:** `tests/unit/test_cells_link.py`.
+- **Result (2026-11-09; review crops accepted by the owner, AC13 passed):**
+  - **Code:** `cells/link.py`; `align_and_link_pairs` in `cells/stage.py` (formerly `align_pairs`) aligns and links per pair; `run_cells` builds chains and places one blob per chain.
+  - **Contracts:** the C15 link rule and the C16 cell as fixed in M7-00. C9 fields `link_tolerance_um`, `link_max_sections` and `section_thickness_um` (null) added.
+  - **Alignment refined:** two fine passes on top of the current field, see decision 0007. Before, a synthetic pair with a steep field found only 67% of its true links.
+  - **AC13 (synthetic, passed):** spheres cut by six 3 µm sections, with a smooth deformation, a registration error and detection noise:
+    - 96.9 to 99.9% of the true links found per pair; false links 0.0 to 0.3%;
+    - at least 95% of the cells rebuilt whole;
+    - centres within 1 µm (99th percentile); radius = largest profile;
+    - 3D radius from the chain within 10% of the true sphere (median).
+  - **Gaps:** sections 15 µm apart, and pairs without recurrence, leave every profile its own cell.
+  - **Real slices 1 to 10** (`brainrec cells --slices 1-10 --overwrite`, 118 s, peak memory 2.0 GB):
+    - 4,554,350 profiles → **4,189,396 cells**;
+    - chains: 3,828,932 of 1 profile, 355,974 of 2, 4,490 of 3; none split;
+    - per aligned pair 10.5 to 21.3% of k−1's profiles linked (chance 0.8 to 0.9%, so about 5% of the links may be false);
+    - median link distance 0.76 µm;
+    - no links on the four pairs without recurrence;
+    - layers 552 MB in total.
+
+    | pair | linked | chance |
+    |---|---|---|
+    | 1→2 | 11.9% | 0.9% |
+    | 2→3 | 10.5% | 0.8% |
+    | 6→7 | 19.8% | 0.9% |
+    | 8→9 | 21.3% | 0.8% |
+    | 9→10 | 15.8% | 0.8% |
+
+  - **Review crops for the owner (AC13):** `spike/M7-13/linked_chains.jpg` in the work dir. It shows 6 random chains over slices 8→9→10 and 4 over 6→7, each section's crop centred on the linked profile, from the slides at 2x.
+    - My reading: large neurons continue with their cell body and shrink towards the cap.
+    - The interim classifier often changes the class along a chain, which the summed probabilities settle.
+    - **Owner check (2026-11-09):** the chains pass.
+  - **Tests:** 17 in `tests/unit/test_cells_link.py`; the align, stage and CLI tests adapted; full suite 453 passed; ruff and mypy clean.
+  - **Mutation check:** 15 deliberate faults, all caught. Three were missed at first (closest-first order, equator search, links on pairs without recurrence); the tests were tightened.
 
 #### M7-14 Cell table and QuPath export · Low · To do
 - **Objective:** the cell table as the main result (F18, F20, C18).

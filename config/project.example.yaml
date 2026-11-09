@@ -20,3 +20,7 @@ align_grid_um: 100.0          # node spacing of the displacement field
 align_window_um: 150.0        # radius of the nuclei voting per node
 align_search_um: 100.0        # largest local offset searched (coarse stage)
 align_min_peak_ratio: 2.0     # a node locks when its peak has 2x the votes of the next peak
+# Linking profiles into 3D cells (C9, C15; M7-13)
+link_tolerance_um: 1.5        # or half the smaller radius if that is larger
+link_max_sections: 8          # longer chains are split at their weakest link
+section_thickness_um: null    # unknown (Q1); once set, a 3D radius is fitted per cell

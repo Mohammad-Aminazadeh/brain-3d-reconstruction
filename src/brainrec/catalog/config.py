@@ -89,6 +89,11 @@ class ProjectConfig(BaseModel):
     align_search_um: float = Field(default=100.0, gt=0.0)  # largest local offset searched
     align_min_peak_ratio: float = Field(default=2.0, gt=1.0)  # peak vs next-best peak to lock on
 
+    # linking profiles into 3D cells (contract C9, C15, C16; M7-13)
+    link_tolerance_um: float = Field(default=1.5, gt=0.0)  # or half the smaller radius if larger
+    link_max_sections: int = Field(default=8, ge=1)  # longer chains are split at the weakest link
+    section_thickness_um: float | None = Field(default=None, gt=0.0)  # unknown (Q1): no 3D radius
+
     # detection QC (M7-16, approved 2026-11-09; Proposed values, calibrated on real slices 1 to
     # 10: densities 1027 to 1147 per mm², class shares within about 15%, 20 to 40% blurred tiles,
     # folds 0.0 to 2.0% of the tissue). Ratios compare a slice with the median of up to two

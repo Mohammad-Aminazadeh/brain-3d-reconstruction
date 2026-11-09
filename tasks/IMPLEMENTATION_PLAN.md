@@ -17,7 +17,8 @@ Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06)
 - **M7-08 done (2026-11-08):** cell layers in `brainrec serve` with colour, opacity, confidence and blur controls; tissue opacity.
 - **M7-09 done (2026-11-09):** first 3D cells on real data: slices 1 to 10, 4.55 million cells, 23 min of detection per slice, accepted by the owner.
 - **M7-16 done (2026-11-09):** detection QC, `brainrec qc-cells`: densities, blur, folds, flags and review crops per slice; on slices 1 to 10 only folds are flagged (slices 1, 3, 5). 
-- **M7-12 done (2026-11-09):** local alignment at cell scale by votes of nucleus offsets (decision 0007); 5 of 9 pairs of slices 1 to 10 align (9 to 20% of nuclei recur, chance 0.8%), 4 show no recurrence (probably missing sections; the owner assumes none for now and asks the lab). Next: M7-13 (linking).
+- **M7-12 done (2026-11-09):** local alignment at cell scale by votes of nucleus offsets (decision 0007); 5 of 9 pairs of slices 1 to 10 align (9 to 20% of nuclei recur, chance 0.8%), 4 show no recurrence (probably missing sections; the owner assumes none for now and asks the lab). 
+- **M7-13 done (2026-11-09; review crops accepted by the owner, AC13 passed):** profiles linked into 3D cells, one blob per cell; slices 1 to 10: 4.55 million profiles → 4.19 million cells; AC13 passed on synthetic data. Next: M7-14 (cell table and QuPath export).
 - **New goal (owner, 2026-11-05/06):** cells (later vessels and other structures) as 3D objects inside a volume that can be made transparent. This adds milestone M7 before M5 (section 10).
 - **Prerequisites:** none of the new tasks is needed before M4-04 or M4-05, and no done task has to be redone.
 - **Open inputs:** section thickness (the owner will supply it) and the supervisor's answers (`docs/REQUIREMENTS.md` section 6.2).
@@ -333,7 +334,7 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 | 11 | **M7-09** real run, one type: **first 3D cells** (done 2026-11-09, accepted by the owner) | Owner review |
 | 12 | M7-16 detection QC (done 2026-11-09) | Tests |
 | 13 | M7-12 local alignment at cell scale (done 2026-11-09) | Tests, recurrence report |
-| 14 | M7-13 linking | **AC13** |
+| 14 | M7-13 linking (done 2026-11-09, AC13 passed) | **AC13** |
 | 15 | M7-10 detection accuracy; M7-11 cell types (need the labels) | **AC10** |
 | 16 | M7-14 cell table and QuPath export; M7-15 density maps | **AC14** |
 | 17 | **M7-17** real run, all types, linked (closes M7) | **AC10 to AC14**, owner |

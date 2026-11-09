@@ -286,19 +286,23 @@ def _cells(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     pairs = manifest.get("cells").get("pairs", {}).get("pairs", {})
     if len(ids) > 1:
         print(f"{'pair':<10}{'status':<15}{'locked':>8}{'shift um':>10}{'recurrence':>12}"
-              f"{'chance':>8}")  # fmt: skip
+              f"{'chance':>8}{'linked':>9}{'chance':>8}")  # fmt: skip
     for fixed, moving in itertools.pairwise(ids):
         s = pairs[str(moving)]["summary"]
         print(f"{f'{fixed}<-{moving}':<10}{s['status']:<15}{100 * s['share_locked']:>7.0f}%"
               f"{s['median_shift_um']:>10.1f}{100 * s['recurrence']:>11.1f}%"
-              f"{100 * s['recurrence_chance']:>7.1f}%")  # fmt: skip
-    counts = manifest.get("cells")["layers"]["counts"]
+              f"{100 * s['recurrence_chance']:>7.1f}%{100 * s['share_linked']:>8.1f}%"
+              f"{100 * s['share_linked_chance']:>7.1f}%")  # fmt: skip
+    layers = manifest.get("cells")["layers"]
+    counts = layers["counts"]
     print(f"{'class':<22}{'cells':>10}  layer")
     for t in cfg.cell_types:
         print(f"{t.name:<22}{counts[t.name]:>10}  {work.cell_layer(t.name)}")
     state = "built" if result.done else "up to date"
+    split = layers["n_split_chains"]
+    note = f"; {split} chains over {cfg.link_max_sections} sections split" if split else ""
     print(f"cells (slices {args.slices[0]}-{args.slices[1]}): layers {state}, "
-          f"{sum(counts.values())} cells, each profile its own cell until linking (M7-13)")  # fmt: skip
+          f"{layers['n_cells']} cells from {layers['n_profiles']} profiles{note}")  # fmt: skip
 
 
 def _start(root: zarr.Group, manifest: Manifest) -> tuple[float, float, float] | None:

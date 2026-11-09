@@ -418,3 +418,9 @@ Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups
   - No non-consecutive pair among slices 1 to 10 shares nuclei, so the order is consistent.
   - Probably missing sections (Q28); the owner assumes none for now.
 - **Expected for truly adjacent sections:** 36 to 66% recurrence for 3 to 10 µm sections (M7-01 model). The measured 9 to 20% are lower because of detection misses, blur and leftover deformation in unlocked regions.
+
+### Linking into 3D cells, slices 1 to 10 (M7-13, 2026-11-09)
+
+- **Result:** 4,554,350 profiles form 4,189,396 cells (8% fewer). 356,000 cells span 2 sections and 4,500 span 3; no chain exceeded 8 sections.
+- **Links per aligned pair:** 10.5 to 21.3% of the profiles, against 0.8 to 0.9% at a wrong offset, so about 5% of the links may be false. Median link distance 0.76 µm.
+- **Fewer links than expected:** a model of 3 to 10 µm sections expects 36 to 66% of nuclei to continue. Links are fewer mainly because of detection misses, blur and regions where the alignment does not lock. The cell count therefore still counts part of the nuclei twice. That has to be corrected statistically (Abercrombie) once the section thickness is known.

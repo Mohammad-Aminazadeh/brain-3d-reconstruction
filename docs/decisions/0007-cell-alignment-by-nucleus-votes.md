@@ -12,6 +12,7 @@ Linking a cell's profiles across sections (M7-13) needs neighbouring sections al
 2. **Coarse, then fine.**
    - Coarse: nodes every 400 µm, search ±100 µm (`align_search_um`).
    - Fine: nodes every 100 µm (`align_grid_um`), search ±10 µm around the coarse field; the peak is refined to the mean of its votes within 1.5 µm.
+   - Refined in M7-13 (2026-11-09): two fine passes. Each moves every nucleus of k by the current field at its own position, then votes only for the remainder. With one constant shift per window, steep fields (2 µm per 100 µm) smeared the votes. That left errors of 1 to 2 µm, and 67% of true links found in one synthetic pair. With the passes, 96.9 to 99.9% are found.
 3. **Lock rule.** A node locks when its peak has at least 3 votes and at least 2× (`align_min_peak_ratio`) the votes of the best other peak. Nuclei within 150 µm (`align_window_um`) of the node vote.
 4. **Field.** Outliers among locked nodes are dropped; the other nodes are filled from the locked ones and get confidence 0.
 5. **No recurrence.** If fewer than 10% of the coarse nodes lock, the pair shares no recognisable nuclei: the field is zero with confidence 0, and linking finds nothing there.

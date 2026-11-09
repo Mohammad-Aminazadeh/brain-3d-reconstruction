@@ -16,7 +16,7 @@ from brainrec.cells.align import (
     smooth,
     vote,
 )
-from brainrec.cells.stage import align_pairs
+from brainrec.cells.stage import align_and_link_pairs
 from brainrec.detect.classify import classify
 from brainrec.registration import PairResult, Transform2D
 from brainrec.store import Manifest, StageExistsError, WorkDir, write_atomic
@@ -208,27 +208,27 @@ def make_align_setup(tmp_path):
     return cfg, work, Catalog.scan(data), Manifest(work.manifest), stack
 
 
-def test_align_pairs_writes_fields_and_resumes(tmp_path):
+def test_align_and_link_pairs_writes_fields_and_resumes(tmp_path):
     cfg, work, catalog, manifest, _ = make_align_setup(tmp_path)
-    assert align_pairs(catalog, work, cfg, manifest).done == [2, 3]
+    assert align_and_link_pairs(catalog, work, cfg, manifest).done == [2, 3]
     _, meta = load_cell_pair(work, 3)
     assert meta["fixed"] == 2 and meta["status"] == "aligned" and meta["method"] == "nuclei-votes/1"
     assert meta["recurrence"] > 0.3 and meta["share_locked"] > 0.8
     state = manifest.get("cells")["pairs"]
     assert state["signature"]["align_window_um"] == 150.0 and set(state["pairs"]) == {"2", "3"}
-    assert align_pairs(catalog, work, cfg, manifest).skipped == [2, 3]
+    assert align_and_link_pairs(catalog, work, cfg, manifest).skipped == [2, 3]
     sparse = np.c_[np.arange(30) * 37.0, np.arange(30) * 23.0]  # detection redone: other cells
     save_profiles(work, 3, _profiles_of(sparse, np.full(30, 3.0)), _meta())
-    again = align_pairs(catalog, work, cfg, manifest)
+    again = align_and_link_pairs(catalog, work, cfg, manifest)
     assert again.done == [3] and again.skipped == [2]  # only the pair with the new cell file
     assert load_cell_pair(work, 3)[1]["status"] == "no_recurrence"
     other = cfg.model_copy(update={"align_window_um": 200.0})
     with pytest.raises(StageExistsError, match="align_window_um"):
-        align_pairs(catalog, work, other, manifest)
-    assert align_pairs(catalog, work, other, manifest, overwrite=True).done == [2, 3]
+        align_and_link_pairs(catalog, work, other, manifest)
+    assert align_and_link_pairs(catalog, work, other, manifest, overwrite=True).done == [2, 3]
     work.pair_transform(2).unlink()
     with pytest.raises(FileNotFoundError, match="1<-2"):
-        align_pairs(catalog, work, other, manifest)
+        align_and_link_pairs(catalog, work, other, manifest)
 
 
 def test_config_rejects_impossible_alignment_settings():

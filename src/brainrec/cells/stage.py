@@ -1,10 +1,11 @@
-"""Cells stage: cell files of a slice range -> local alignment per pair, then one Neuroglancer
-layer per class in the volume frame (M7-07c, M7-12; contracts C6, C7, C15, C16, C17). Reads no
-slide pixels.
+"""Cells stage: cell files of a slice range -> local alignment and links per pair, then 3D
+cells, one Neuroglancer layer per class in the volume frame (M7-07c, M7-12, M7-13; contracts C6,
+C7, C15, C16, C17). Reads no slide pixels.
 
-Local alignment (M7-12): per consecutive pair, the displacement field of slice k onto k-1 after
-the pair transform (`cells/pair_{k}.npz`, C15). Resumes per pair: a pair is redone when one of its
-cell files or its pair transform changed; other alignment settings need `overwrite`.
+Per consecutive pair (M7-12, M7-13): the displacement field of slice k onto k-1 after the pair
+transform, and the links between their profiles (`cells/pair_{k}.npz`, C15). Resumes per pair: a
+pair is redone when one of its cell files or its pair transform changed; other alignment or link
+settings need `overwrite`. The linked profiles form chains, one 3D cell each (C16).
 
 Until linking (M7-13) every profile is its own cell. The frame is the registered volume's
 (C11 metadata in `volume.zarr`): the cells are placed with the transforms, canvas origin and z
@@ -24,18 +25,26 @@ import numpy as np
 import zarr
 
 from brainrec.catalog import Catalog, ProjectConfig
-from brainrec.cells.align import METHOD, AlignParams, align_pair
+from brainrec.cells.align import CHANCE_OFFSET_UM, METHOD, AlignParams, align_pair
 from brainrec.cells.layers import write_layer
+from brainrec.cells.link import (
+    Links,
+    LinkSide,
+    build_cells,
+    build_chains,
+    link_profiles,
+    place_cells,
+)
 from brainrec.cells.place import Placed, VolumeFrame, place_profiles
 from brainrec.registration import PairResult, Transform2D
 from brainrec.registration.chain import load_chained
 from brainrec.store import Manifest, StageExistsError, StageResult, WorkDir, fingerprint
-from brainrec.store.cells import load_profiles, save_cell_pair
+from brainrec.store.cells import Profiles, load_cell_pair, load_profiles, save_cell_pair
 
 log = logging.getLogger(__name__)
 STAGE = "cells"
-VERSION = 1
-ALIGN_VERSION = 1  # bump when the alignment changes in a way that should invalidate old fields
+VERSION = 2  # 2: one blob per linked chain (M7-13) instead of one per profile
+ALIGN_VERSION = 2  # 2: pair files hold the links (M7-13); bump when fields or links change
 
 
 class CellsInputError(ValueError):
@@ -98,6 +107,8 @@ def _signature(catalog: Catalog, work: WorkDir, cfg: ProjectConfig, frame: Volum
         "version": VERSION,
         "ids": ids,
         "cells": {str(k): fingerprint(work.cell_profiles(k)) for k in ids},
+        "pairs": {str(k): fingerprint(work.cell_pair(k)) for k in ids[1:]},
+        "link_max_sections": cfg.link_max_sections,
         "volume_sha256": hashlib.sha256(volume.encode()).hexdigest(),
         "cell_types": [t.model_dump(mode="json") for t in cfg.cell_types],
     }
@@ -111,6 +122,7 @@ def _align_signature(cfg: ProjectConfig) -> dict:
         "align_window_um": cfg.align_window_um,
         "align_search_um": cfg.align_search_um,
         "align_min_peak_ratio": cfg.align_min_peak_ratio,
+        "link_tolerance_um": cfg.link_tolerance_um,
     }
 
 
@@ -122,17 +134,32 @@ def _pair_inputs(work: WorkDir, fixed: int, moving: int) -> dict:
     }
 
 
-def align_pairs(
+def _side(p: Profiles, xy: np.ndarray) -> LinkSide:
+    return LinkSide(xy, p.r_um.astype(float), p.class_id, p.confidence)
+
+
+def _link_summary(links: Links, chance: Links, n_fixed: int) -> dict:
+    return {
+        "n_links": len(links),
+        "share_linked": round(len(links) / n_fixed, 4) if n_fixed else 0.0,
+        "median_link_um": round(float(np.median(links.dist_um)), 3) if len(links) else None,
+        "share_linked_chance": round(len(chance) / n_fixed, 4) if n_fixed else 0.0,
+    }
+
+
+def align_and_link_pairs(
     catalog: Catalog,
     work: WorkDir,
     cfg: ProjectConfig,
     manifest: Manifest,
     overwrite: bool = False,
 ) -> StageResult:
-    """The displacement field of every consecutive pair of `catalog` (C15), keyed by the moving
-    slice; skips pairs whose cell files and pair transform are unchanged. FileNotFoundError naming
-    unregistered pairs; StageExistsError if fields of other alignment settings exist, unless
-    `overwrite` (then every pair is redone)."""
+    """The displacement field and the links of every consecutive pair of `catalog` (C15), keyed
+    by the moving slice; skips pairs whose cell files and pair transform are unchanged. A pair
+    without recurring nuclei gets no links. `share_linked_chance` counts the links found at a
+    deliberately wrong offset, an estimate of the false links. FileNotFoundError naming
+    unregistered pairs; StageExistsError if pairs of other alignment or link settings exist,
+    unless `overwrite` (then every pair is redone)."""
     ids = [s.id for s in catalog.slices]
     pairs = list(itertools.pairwise(ids))
     missing = [f"{a}<-{b}" for a, b in pairs if not work.pair_transform(b).exists()]
@@ -163,20 +190,37 @@ def align_pairs(
         a, _ = load_profiles(work, fixed)
         b, _ = load_profiles(work, moving)
         pr = PairResult.from_dict(json.loads(work.pair_transform(moving).read_text()))
-        aligned = align_pair(np.c_[a.x_um, a.y_um], pr.transform.apply(np.c_[b.x_um, b.y_um]),
-                             params)  # fmt: skip
-        summary = {**aligned.summary(), "seconds": round(time.monotonic() - t0, 1)}
-        arrays = {**aligned.field.arrays(), "links": np.zeros((0, 2), np.int32),
-                  "link_dist_um": np.zeros(0, np.float32)}  # fmt: skip
-        save_cell_pair(work, moving, arrays, {"fixed": fixed, **summary})
+        fixed_xy, moving_xy = np.c_[a.x_um, a.y_um], pr.transform.apply(np.c_[b.x_um, b.y_um])
+        aligned = align_pair(fixed_xy, moving_xy, params)
+        links = chance = Links.empty()
+        if aligned.status == "aligned":
+            moved = moving_xy + aligned.field.displacement(moving_xy)
+            links = link_profiles(_side(a, fixed_xy), _side(b, moved), cfg.link_tolerance_um)
+            chance = link_profiles(_side(a, fixed_xy), _side(b, moved + CHANCE_OFFSET_UM),
+                                   cfg.link_tolerance_um)  # fmt: skip
+        summary = {**aligned.summary(), **_link_summary(links, chance, len(a)),
+                   "seconds": round(time.monotonic() - t0, 1)}  # fmt: skip
+        save_cell_pair(work, moving, {**aligned.field.arrays(), **links.arrays()},
+                       {"fixed": fixed, **summary})  # fmt: skip
         done[str(moving)] = {"inputs": inputs, "summary": summary}
         manifest.set(STAGE, {**(manifest.get(STAGE) or {}),
                              "pairs": {"signature": signature, "pairs": done}})  # fmt: skip
         result.done.append(moving)
-        log.info("cells: pair %d<-%d %s, %.0f%% of nodes locked, recurrence %.1f%% (chance %.1f%%)",
+        log.info("cells: pair %d<-%d %s, %.0f%% of nodes locked, %.1f%% linked (chance %.1f%%)",
                  fixed, moving, summary["status"], 100 * summary["share_locked"],
-                 100 * summary["recurrence"], 100 * summary["recurrence_chance"])  # fmt: skip
+                 100 * summary["share_linked"], 100 * summary["share_linked_chance"])  # fmt: skip
     return result
+
+
+def _pair_links(work: WorkDir, ids: list[int]) -> list[Links]:
+    out = []
+    for fixed, moving in itertools.pairwise(ids):
+        arrays, meta = load_cell_pair(work, moving)
+        if meta["fixed"] != fixed:
+            raise CellsInputError(f"cells/pair_{moving} links slice {moving} to {meta['fixed']}, "
+                                  f"not {fixed}: run `brainrec cells --overwrite`")  # fmt: skip
+        out.append(Links.from_arrays(arrays))
+    return out
 
 
 def run_cells(
@@ -186,8 +230,8 @@ def run_cells(
     manifest: Manifest,
     overwrite: bool = False,
 ) -> StageResult:
-    """Align every consecutive pair locally (`align_pairs`), then place the profiles of the
-    slices of `catalog` in the volume frame and write one layer per class
+    """Align and link every consecutive pair (`align_and_link_pairs`), build 3D cells from the
+    chains of linked profiles, place them in the volume frame and write one layer per class
     (`cells/layer_<name>/`). Skips the layers if they exist from the same inputs. Layers of other
     inputs: StageExistsError unless `overwrite`. FileNotFoundError without a volume, cell files
     or pair transforms; CellsInputError if volume, registration or cell files disagree.
@@ -195,7 +239,7 @@ def run_cells(
     ids = [s.id for s in catalog.slices]
     frame = volume_frame(work)
     _check_inputs(catalog, work, cfg, frame)
-    align_pairs(catalog, work, cfg, manifest, overwrite)
+    align_and_link_pairs(catalog, work, cfg, manifest, overwrite)
     signature = _signature(catalog, work, cfg, frame)
     state = (manifest.get(STAGE) or {}).get("layers")
     layers = [work.cell_layer(t.name) for t in cfg.cell_types]
@@ -211,8 +255,8 @@ def run_cells(
     t0 = time.monotonic()
     names = [t.name for t in cfg.cell_types]
     proportions = np.array([t.proportions for t in cfg.cell_types], float)
-    parts = []
-    for k in ids:
+    parts, sizes, r_um, prob, seen, section = [], [], [], [], [], []
+    for s, k in enumerate(ids):
         profiles, meta = load_profiles(work, k)
         if meta["class_names"] != names:
             raise CellsInputError(
@@ -220,7 +264,18 @@ def run_cells(
                 f"has {names}: run `brainrec detect --overwrite`"
             )
         parts.append(place_profiles(profiles, k, frame, proportions))
-    placed = Placed.concat(parts)
+        sizes.append(len(profiles))
+        r_um.append(profiles.r_um)
+        prob.append(profiles.class_prob)
+        seen.append(profiles.nucleolus_seen)
+        section.append(np.full(len(profiles), s))
+    label, n_split = build_chains(sizes, _pair_links(work, ids), cfg.link_max_sections)
+    cells = build_cells(label, np.concatenate(r_um), np.concatenate(prob), np.concatenate(seen),
+                        np.concatenate(section), cfg.section_thickness_um)  # fmt: skip
+    placed = place_cells(Placed.concat(parts), cells, proportions)
+    if n_split:
+        log.warning("cells: %d chains longer than %d sections were split at their weakest link",
+                    n_split, cfg.link_max_sections)  # fmt: skip
     if len(placed):
         bounds = ((placed.centre - placed.radii).min(0), (placed.centre + placed.radii).max(0))
     else:
@@ -231,6 +286,15 @@ def run_cells(
         write_layer(path, placed.subset(sel), bounds)
         counts[t.name] = int(sel.sum())
         log.info("cells: layer %s, %d cells", t.name, counts[t.name])
-    entry = {"signature": signature, "counts": counts, "seconds": round(time.monotonic() - t0, 1)}
+    lengths = np.bincount(cells.n_profiles.astype(int))
+    entry = {
+        "signature": signature,
+        "counts": counts,
+        "n_profiles": int(sum(sizes)),
+        "n_cells": len(cells),
+        "n_split_chains": n_split,
+        "chain_lengths": {str(n): int(c) for n, c in enumerate(lengths) if c},
+        "seconds": round(time.monotonic() - t0, 1),
+    }
     manifest.set(STAGE, {**(manifest.get(STAGE) or {}), "layers": entry})
     return StageResult(done=ids)
