@@ -96,6 +96,7 @@ Status labels: **Confirmed** (stated or approved by the project owner), **Propos
     - A *profile* is the cut surface of one cell in one section; a *cell* is one or more linked profiles.
 23. **Long runs ask before each next slide** (owner, 2026-11-08): detection of all 140 slices takes about 39 h. `brainrec detect` therefore asks after each slide whether to start the next one; a later run continues with the slides not yet done. `--no-ask` runs without asking.
 24. **The interim classifier's reference lives in the code** (owner, 2026-11-08): `src/brainrec/detect/rules_v1.json` (2 KB), versioned with the code like a calibrated constant.
+25. **Detection QC** (owner, 2026-11-09, M7-16): a separate command `brainrec qc-cells`, report `qc/cells_report.json` and one review sheet per slice. Slices are compared with up to two neighbours on each side. Folds are dark regions of at least 2× the median tissue density on the 32x level, over at least 0.05 mm². The thresholds are in `docs/ARCHITECTURE.md` (C9, C10b).
 
 ## 5. Proposed assumptions awaiting approval
 
@@ -391,3 +392,13 @@ Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups
 - **Classes (interim classifier rules-v1, not checked against labels):** Neuron 19%, Astrocyte-like 34%, Oligodendrocyte-like 34%, Microglia-like 7%, Vessel-wall 6%.
 - **Focus:** 26% of the tiles (21% of the nuclei) are below the sharpness limit. They form compact patches of lost focus in the scan.
 - **For all 140 slices:** about 39 h of detection and about 7 GB of cell files.
+
+### Slices 1 to 10 and their detection QC (M7-09, M7-16, 2026-11-09)
+
+- **Detection, slices 1 to 10:** 4.55 million nuclei; 16 to 29 min per slice including reading (23 min on average, so about 54 h for 140 slices rather than 39 h); cell files 488 MB.
+- **Density:** 1027 to 1147 profiles per mm² of section; each slice lies within 0.94 to 1.07 of its neighbours, and class shares within 0.83 to 1.10.
+- **Focus:** 20 to 40% of the tiles are blurred (17 to 39% of the profiles).
+- **Folds** (dark regions of at least 2× the median tissue density on the 32x level):
+  - slices 1 to 5: 0.8 to 2.0% of the tissue, with 4,765 to 9,905 profiles inside folds;
+  - slices 6 to 10: 0.0 to 0.2%.
+- **Interim classifier inside folds:** many nuclei in folds are called Neuron because the tissue there stains darker.

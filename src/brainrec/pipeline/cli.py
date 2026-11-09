@@ -1,5 +1,5 @@
 """Interim CLI until `brainrec run` arrives in M5 (M2-08, M3-10, M4-04, M7-06): `preprocess`,
-`register`, `qc`, `volume`, `detect` and `cells` for a slice range, and `serve`.
+`register`, `qc`, `volume`, `detect`, `cells` and `qc-cells` for a slice range, and `serve`.
 
 Mistakes in the input, the settings or the environment end with a one-line `error: ...` and exit
 status 1; anything else is a bug and keeps its traceback.
@@ -23,7 +23,7 @@ from brainrec.cells.stage import CellsInputError, run_cells
 from brainrec.detect.classify import RULE_CLASSES
 from brainrec.detect.stage import run_detect
 from brainrec.preprocess import run_preprocess
-from brainrec.qc import run_qc
+from brainrec.qc import run_qc, run_qc_cells
 from brainrec.registration import PairResult, Transform2D
 from brainrec.registration.chain import load_chained, run_register
 from brainrec.serve import (
@@ -71,6 +71,8 @@ def _parser() -> argparse.ArgumentParser:
     stage("preprocess", "tissue masks and registration images", "redo results of other settings")
     stage("register", "align consecutive slices to the first", "redo pairs of other settings")
     stage("qc", "scores, overlays and flags of registered pairs", "redo pairs of other settings")
+    stage("qc-cells", "detection QC: density, blur, folds, flags, review crops",
+          "redo slices of other fold or crop settings")  # fmt: skip
     v = stage("volume", "registered, tissue-only volume", "replace a volume of other inputs")
     v.add_argument("--unregistered", action="store_true", help="stack whole scans unaligned (M2)")
     d = stage(
@@ -174,6 +176,26 @@ def _qc(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     _summary("qc", result, "pairs", f"; report {work.qc_report}")
     flagged = [f"{r['fixed']}<-{r['moving']}" for r in rows if r["flagged"]]
     print(f"flagged: {', '.join(flagged) or 'none'}")
+
+
+def _qc_cells(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
+    catalog = _catalog(cfg, args.slices)
+    result = run_qc_cells(catalog, work, cfg, Manifest(work.manifest), overwrite=args.overwrite)
+    report = json.loads(work.qc_cells_report.read_text())
+    print(f"{'slice':<7}{'tissue mm2':>11}{'cells':>9}{'per mm2':>9}{'ratio':>7}"
+          f"{'blurred tiles':>15}{'folds':>7}  flags")  # fmt: skip
+    for r in report["slices"]:
+        ratio = "-" if r["density_ratio"] is None else f"{r['density_ratio']:.2f}"
+        line = (
+            f"{r['slice_id']:<7}{r['tissue_mm2']:>11.1f}{r['n_profiles']:>9}"
+            f"{r['density_mm2']:>9.0f}{ratio:>7}{100 * r['blurred_tile_share']:>14.0f}%"
+            f"{100 * r['fold_share']:>6.1f}%  {', '.join(r['flags'])}"
+        )
+        print(line.rstrip())
+    print("thresholds: " + ", ".join(f"{k} {v}" for k, v in report["thresholds"].items()))
+    _summary("qc-cells", result, "slices",
+             f"; report {work.qc_cells_report}; review crops {work.qc_dir}/cells_<id>.jpg")  # fmt: skip
+    print(f"flagged: {', '.join(map(str, report['flagged'])) or 'none'}")
 
 
 def _registration(work: WorkDir, ids: list[int]) -> tuple[dict[int, Transform2D], dict[int, Path]]:
@@ -328,6 +350,7 @@ COMMANDS = {
     "preprocess": _preprocess,
     "register": _register,
     "qc": _qc,
+    "qc-cells": _qc_cells,
     "volume": _volume,
     "detect": _detect,
     "cells": _cells,

@@ -7,3 +7,11 @@ n_levels: 5
 # its threshold; null = not checked
 qc_min_ncc: 0.40
 qc_min_dice: 0.93
+# Detection QC (M7-16, approved 2026-11-09; these are the defaults): ratios compare a slice with
+# the median of up to two slices on each side, in both directions
+qc_cells_density_ratio: 1.33
+qc_cells_class_ratio: 1.5
+qc_cells_max_blurred_share: 0.5   # of the tiles
+qc_fold_od_ratio: 2.0             # x the median tissue optical density
+qc_fold_min_area_mm2: 0.05
+qc_fold_max_share: 0.01           # of the tissue area

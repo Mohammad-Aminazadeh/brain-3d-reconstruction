@@ -9,6 +9,7 @@ Names follow contracts C4 (preprocessing files), C5 (pairs and reference) and C1
     transforms/pair_{k}.json         PairResult of slice k onto slice k-1
     transforms/chained_{k}.json      transform of slice k onto the reference slice
     qc/report.json, qc/overlay_{k}.png
+    qc/cells_report.json, qc/cells_{id}.jpg   detection QC and review crops (M7-16)
     cells/{id}.npz, cells/{id}.json  cell profiles of a slice and their metadata (C13)
     cells/pair_{k}.npz, cells/pair_{k}.json   local alignment and links of k onto k-1 (C15)
     cells/layer_<name>/              Neuroglancer cell layer per class (C17)
@@ -80,6 +81,14 @@ class WorkDir:
 
     def qc_overlay(self, moving_id: int) -> Path:
         return self.qc_dir / f"overlay_{_check_id(moving_id)}.png"
+
+    @property
+    def qc_cells_report(self) -> Path:
+        return self.qc_dir / "cells_report.json"
+
+    def qc_cells_crops(self, slice_id: int) -> Path:
+        """Review crops of one slice's detection, one sheet (M7-16)."""
+        return self.qc_dir / f"cells_{_check_id(slice_id)}.jpg"
 
     # cells (C13, C15, C17, C18)
     @property

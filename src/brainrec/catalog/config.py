@@ -82,6 +82,17 @@ class ProjectConfig(BaseModel):
     detect_min_sharpness: float = 100.0  # tiles below are blurred (level-0 scale of M7-01)
     cell_types: list[CellType] = Field(default_factory=lambda: list(DEFAULT_CELL_TYPES))
 
+    # detection QC (M7-16, approved 2026-11-09; Proposed values, calibrated on real slices 1 to
+    # 10: densities 1027 to 1147 per mm², class shares within about 15%, 20 to 40% blurred tiles,
+    # folds 0.0 to 2.0% of the tissue). Ratios compare a slice with the median of up to two
+    # slices on each side; a ratio r flags values above r x or below 1/r x that median.
+    qc_cells_density_ratio: float = Field(default=1.33, gt=1.0)
+    qc_cells_class_ratio: float = Field(default=1.5, gt=1.0)  # classes with >= 2% share only
+    qc_cells_max_blurred_share: float = Field(default=0.5, ge=0.0, le=1.0)  # of the tiles
+    qc_fold_od_ratio: float = Field(default=2.0, gt=1.0)  # x the median tissue optical density
+    qc_fold_min_area_mm2: float = Field(default=0.05, ge=0.0)  # smaller dark spots are no fold
+    qc_fold_max_share: float = Field(default=0.01, ge=0.0, le=1.0)  # of the tissue area
+
     @field_validator("cell_types")
     @classmethod
     def _ids_in_order(cls, types: list[CellType]) -> list[CellType]:

@@ -511,3 +511,29 @@ def test_serve_adds_the_cell_layers_found(tmp_path, monkeypatch, capsys):
     assert started["s"]["position"] == [pytest.approx(100.0), pytest.approx(50.0), 0.5]
     message = _error(cfg, "serve", "--tissue-opacity", "2")
     assert message == "error: --tissue-opacity must lie between 0 and 1"
+
+
+def test_qc_cells_lists_slices_and_flags(tmp_path, monkeypatch, capsys):
+    from brainrec.qc import run_qc_cells
+    from tests.unit.test_qc_cells import make_qc_setup
+
+    *_, factory = make_qc_setup(tmp_path)
+    monkeypatch.setattr(
+        cli, "run_qc_cells", functools.partial(run_qc_cells, reader_factory=factory)
+    )
+    cfg = _write_config(tmp_path, tmp_path / "data", z_spacing_um=5.0)
+    _run(cfg, "qc-cells", "--slices", "1-5")
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split()[:3] == ["slice", "tissue", "mm2"] and lines[0].endswith("flags")
+    rows = {int(line.split()[0]): line for line in lines[1:6]}
+    assert rows[1].endswith("%") and rows[2].endswith("folds") and rows[3].endswith("blurred")
+    assert rows[4].endswith("empty, density_outlier") and " - " not in rows[1]
+    assert lines[6].startswith("thresholds: qc_cells_density_ratio 1.33")
+    assert lines[7].startswith("qc-cells (slices): 5 done, 0 up to date; report ")
+    assert lines[-1] == "flagged: 2, 3, 4"
+    _run(cfg, "qc-cells", "--slices", "1-5")
+    assert "0 done, 5 up to date" in capsys.readouterr().out
+    (tmp_path / "work" / "cells" / "2.json").unlink()
+    assert _error(cfg, "qc-cells", "--slices", "1-5") == (
+        "error: slices [2] have no cell file: run `brainrec detect`"
+    )

@@ -193,8 +193,19 @@ run_qc(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=
     # implemented (M4-04), C7: score_pair + render_overlay per consecutive pair, then the report;
     # resumes per pair (see C6); FileNotFoundError naming unregistered pairs
 apply_override(...)                                      # post-MVP
-cells_report(work, ids, cfg) -> dict                     # M7-16: counts and density per slice and type,
-    # flags (outliers, blur, folds), review crops; evaluate(labels, cells) -> scores (M7-02, M7-10)
+# implemented (M7-16), qc/cells.py, replacing the planned cells_report(work, ids, cfg):
+find_folds(rgb, mask, um_px, od_ratio, min_area_mm2) -> bool array   # registration level (32x)
+    # tissue pixels with optical density -log10(gray / glass) >= od_ratio x the tissue median,
+    # 3 x 3 opening, regions >= min_area_mm2; glass = median gray outside the mask
+slice_stats(profiles, meta, mask, folds, um_px) -> dict  # counts, densities per mm² of tissue,
+    # blurred tile and profile shares, fold area and the profiles inside folds
+flag_slices(rows, cfg) -> rows; build_cells_report(rows, cfg) -> dict   # C10b
+crop_centres(...), render_crop(...), review_sheet(...)  # review crops (2x, 512 px) with outlines
+run_qc_cells(catalog, work, cfg, manifest, reader_factory=SlideReader.open, overwrite=False)
+    # -> StageResult; resumes per slice (source, mask and cell file unchanged); the flag
+    # thresholds are re-evaluated on every run; fold or crop settings changed: StageExistsError
+    # unless overwrite. FileNotFoundError naming slices without a cell file or a mask
+evaluate(labels, cells) -> scores                        # M7-02, M7-10
 
 # detect                             # M7; file contracts fixed in M7-00 (C13, C14); signatures may be refined by the implementing task
 # implemented (M7-05), refining the planned detect_nuclei(rgb, mask, um_per_px, cfg) per tile:
@@ -258,7 +269,7 @@ run_cells(catalog, work, cfg, manifest, overwrite=False) -> StageResult
 WorkDir(root).manifest, .volume        # the only place that knows file names
     .reg_image(id), .reg_meta(id), .mask(id)                 # implemented (M3-01), C4
     .pair_transform(k), .chained_transform(id)               # implemented (M3-01), C5
-    .qc_report, .qc_overlay(k); .reg_dir, .mask_dir, .transforms_dir, .qc_dir   # (M3-01), C10
+    .qc_report, .qc_overlay(k), .qc_cells_report, .qc_cells_crops(id) (M7-16); .reg_dir, .mask_dir, .transforms_dir, .qc_dir   # (M3-01), C10
     .cell_profiles(id), .cell_meta(id), .cell_pair(k), .cell_layer(type), .cell_table,
     .qupath(id), .density, .labels_dir                       # implemented (M7-04), C13 to C18
 # store/cells.py (M7-04): Profiles (C13), encode_outlines, save_profiles(work, id, profiles, meta),
@@ -311,6 +322,8 @@ brainrec --config C volume --slices A-B [--overwrite] [--unregistered]
     # registered, tissue-only (C8, C11) from load_chained and the masks; --unregistered = M2 mode
 brainrec --config C qc --slices A-B [--overwrite]         # implemented (M4-04): table per pair,
     # thresholds, flagged pairs; exit status 0 also with flagged pairs
+brainrec --config C qc-cells --slices A-B [--overwrite]   # implemented (M7-16): detection QC, table
+    # per slice (tissue, cells, density, ratio to the neighbours, blurred tiles, folds, flags)
 brainrec --config C detect --slices A-B [--overwrite] [--no-ask]   # implemented (M7-06): cell files
     # per slice; asks "Start slice N? [y/N]" after each slice (no terminal = no; --no-ask runs all);
     # table of nuclei, dropped (radius limits), blurred tiles and seconds per slice
@@ -411,8 +424,32 @@ Every M3 to M5 task follows these. Changing one is an interface change (CLAUDE.m
 | `volume_mask_margin_um` | 50 | decision 9; `VolumeSpec.mask_margin_um` (M3-09) |
 | `qc_min_dice` | 0.93 (approved for now, 2026-11-07) | M4-05: real pairs 0.904 to 0.981; flags the damaged pairs 4→5 and 5→6. Dice hardly reacts to misalignment (a 400 µm shift lowers it by 0.01 to 0.03); it mainly shows torn or missing margins and rotations of about 5° |
 | `qc_min_ncc` | 0.40 (approved for now, 2026-11-07) | M4-05: real pairs 0.346 to 0.754; flags 4→5 and 5→6 (gap 0.377 to 0.451). Catches a 400 µm shift in the weaker pairs 1 to 5 and, with Dice, a 5° rotation in every pair; errors of 100 to 200 µm stay below what an absolute threshold can see |
+| `qc_cells_density_ratio` | 1.33 (approved 2026-11-09) | M7-16: real densities 1027 to 1147 per mm², ratio to the neighbours 0.94 to 1.07 |
+| `qc_cells_class_ratio` | 1.5 (approved 2026-11-09) | M7-16: class share ratios 0.83 to 1.10 (interim classifier) |
+| `qc_cells_max_blurred_share` | 0.5 (approved 2026-11-09) | M7-16: 20 to 40% blurred tiles on slices 1 to 10 |
+| `qc_fold_od_ratio` | 2.0 (approved 2026-11-09) | a fold doubles the tissue, so roughly its absorbance |
+| `qc_fold_min_area_mm2` | 0.05 (approved 2026-11-09) | smaller dark spots (nuclei clusters, vessels) are no fold |
+| `qc_fold_max_share` | 0.01 (approved 2026-11-09) | M7-16: folds 0.0 to 2.0% of the tissue; flags slices 1, 3 and 5 |
 
 **C10 QC report.** `qc/report.json`: `{"schema": "brainrec.qc/1", "thresholds", "pairs": [{"fixed", "moving", "status", "n_inliers", "rms_um", "ncc", "dice", "flagged", "overlay"}]}`. `flagged`: status `failed` (M3-13), or a score below its threshold.
+
+**C10b Detection QC report (M7-16, approved by the owner 2026-11-09).**
+- **`qc/cells_report.json`:** `{"schema": "brainrec.cellsqc/1", "slice_ids", "density_unit", "neighbours", "min_class_share", "thresholds", "slices": [...], "flagged": [ids]}`.
+- **Per slice:** `slice_id`, `tissue_mm2`, `n_profiles`, `density_mm2`, `classes` (`{name: {"n", "density_mm2", "share"}}`), `n_tiles`, `n_blurred_tiles`, `blurred_tile_share`, `blurred_cell_share`, `fold_mm2`, `fold_share`, `n_fold_regions`, `cells_in_folds`, `crops`, `neighbour_density_mm2`, `density_ratio`, `class_ratios`, `flags`.
+- **Densities:** profiles per mm² of section (tissue mask area) until the section thickness is known.
+- **Neighbours:** up to 2 non-empty slices on each side within the range; their median is the reference.
+- **Flags:**
+
+  | Flag | Rule |
+  |---|---|
+  | `empty` | no profiles |
+  | `density_outlier` | density above `qc_cells_density_ratio` × or below 1/that × the neighbours |
+  | `class_outlier` | for a class with at least 2% share in the neighbours, the share off by `qc_cells_class_ratio` in either direction |
+  | `blurred` | share of blurred tiles above `qc_cells_max_blurred_share` |
+  | `folds` | fold area at least `qc_fold_max_share` of the tissue |
+
+- **`qc/cells_{id}.jpg`:** one sheet per slice, three crops per row. Each crop is 512 px at the detection level (about 226 µm), with a caption giving the slice position in µm. It shows up to 2 of the densest clusters of blurred profiles, 2 of the largest folds and 2 random sharp profiles outside folds (random tissue if there are none). Outlines are in class colours; fold boundaries are black.
+- **Manifest key `qc_cells`:** `{"signature": {version, fold settings, crop size, colours}, "slices": {"<id>": {"inputs": {source, mask_sha256, cells, cell_meta}, "stats": {...}}}}`.
 
 **C11 Tissue-only volume.**
 - A voxel is tissue if it lies inside its slice's mask, warped by the slice's transform and enlarged by `volume_mask_margin_um`.
@@ -626,7 +663,8 @@ Work directory (outside repo): /Volumes/My Passport/3D Brain Reconstruction/
     qc/report.json  qc/overlay_{k}.png
     cells/{id}.npz  cells/{id}.json  cells/pair_{k}.npz          (M7, C13, C15)
     cells/layer_<type>/  cells/table.csv  cells/qupath/{id}.geojson   (M7, C17, C18)
-    density.zarr  qc/cells_report.json                           (M7, C18)
+    density.zarr                                                 (M7, C18)
+    qc/cells_report.json  qc/cells_{id}.jpg                      (M7-16, C10b)
     labels/crops.json  labels/qupath/<slide>.geojson  labels/annotations/<slide>.geojson   (M7-02)
 ```
 

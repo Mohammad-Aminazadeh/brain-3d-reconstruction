@@ -15,7 +15,8 @@ Status: **section 8 approved and applied** (2026-10-19). **Step 1 (spike, M3-06)
 - **M7-06 done (2026-11-08):** `detect` stage and `brainrec detect`, with the interim classifier rules-v1 (reference rebuilt from 2x measurements); it asks before each next slice.
 - **M7-07 done (2026-11-08):** cells placed in the volume frame, one layer per class, `brainrec cells`; AC12 passed.
 - **M7-08 done (2026-11-08):** cell layers in `brainrec serve` with colour, opacity, confidence and blur controls; tissue opacity.
-- **M7-09 done (2026-11-09):** first 3D cells on real data: slices 1 to 10, 4.55 million cells, 23 min of detection per slice, accepted by the owner. Next: M7-16 (detection QC), then M7-12.
+- **M7-09 done (2026-11-09):** first 3D cells on real data: slices 1 to 10, 4.55 million cells, 23 min of detection per slice, accepted by the owner.
+- **M7-16 done (2026-11-09):** detection QC, `brainrec qc-cells`: densities, blur, folds, flags and review crops per slice; on slices 1 to 10 only folds are flagged (slices 1, 3, 5). Next: M7-12 (local alignment at cell scale).
 - **New goal (owner, 2026-11-05/06):** cells (later vessels and other structures) as 3D objects inside a volume that can be made transparent. This adds milestone M7 before M5 (section 10).
 - **Prerequisites:** none of the new tasks is needed before M4-04 or M4-05, and no done task has to be redone.
 - **Open inputs:** section thickness (the owner will supply it) and the supervisor's answers (`docs/REQUIREMENTS.md` section 6.2).
@@ -329,7 +330,7 @@ Approved by the owner on 2026-11-06 (decision 0005; CLAUDE.md "Changes of direct
 | 9 | M7-07 placement, layers, `cells` stage (done 2026-11-08, AC12 passed) | **AC12** |
 | 10 | M7-08 viewer (done 2026-11-08; the owner's look follows in M7-09) | Tests, owner |
 | 11 | **M7-09** real run, one type: **first 3D cells** (done 2026-11-09, accepted by the owner) | Owner review |
-| 12 | M7-16 detection QC | Tests |
+| 12 | M7-16 detection QC (done 2026-11-09) | Tests |
 | 13 | M7-12 local alignment at cell scale | Tests, recurrence report |
 | 14 | M7-13 linking | **AC13** |
 | 15 | M7-10 detection accuracy; M7-11 cell types (need the labels) | **AC10** |

@@ -86,7 +86,7 @@ Conventions that apply to every task (not repeated below):
 | M7-13 | Linking profiles into 3D cells | cells | High | To do | M7-12 |
 | M7-14 | Cell table and QuPath export | cells | Low | To do | M7-13 |
 | M7-15 | Density maps per type | cells | Medium | To do | M7-13, M7-08 |
-| M7-16 | Detection QC | qc | Medium | To do | M7-06 |
+| M7-16 | Detection QC | qc | Medium | Done | M7-06 |
 | M7-17 | Real run, slices 1 to 10, all types, linked | integration | Medium | To do | M7-11, M7-13, M7-14, M7-15, M7-16, M4-05 |
 | M8-xx | Vessels, other structures, landmark-based non-rigid refinement (after the MVP) | several | n/a | To do (planned when reached) | M6-04 |
 | M9-xx | Suspicious cells (after the MVP) | several | n/a | To do (planned when reached) | M7-17, Q8, Q12 |
@@ -1237,7 +1237,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 
 ### Component: qc
 
-#### M7-16 Detection QC · Medium · To do
+#### M7-16 Detection QC · Medium · Done
 - **Objective:** see where detection is doubtful.
 - **Outputs:** `qc/cells_report.json` with:
   - counts and density per slice and type;
@@ -1246,6 +1246,35 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
 - **Depends on:** M7-06. **Files:** `src/brainrec/qc/cells.py`.
 - **Acceptance:** a synthetic blurred or empty slice is flagged.
 - **Tests:** `tests/unit/test_qc_cells.py`.
+- **Result (2026-11-09; design, fold rule and thresholds approved by the owner before the code):**
+  - **Command:** `brainrec qc-cells --slices A-B [--overwrite]`; report `qc/cells_report.json` (C10b, schema `brainrec.cellsqc/1`), one review sheet `qc/cells_{id}.jpg` per slice, manifest key `qc_cells`. Resumable per slice; the flag thresholds are re-evaluated on every run.
+  - **Folds:** found on the slide's 32x level, since the registration images are contrast-equalised (CLAHE), which hides folds. Rule: optical density at least 2× the slice's median tissue density, regions of at least 0.05 mm².
+  - **Config (C9):** `qc_cells_density_ratio` 1.33, `qc_cells_class_ratio` 1.5, `qc_cells_max_blurred_share` 0.5, `qc_fold_od_ratio` 2.0, `qc_fold_min_area_mm2` 0.05, `qc_fold_max_share` 0.01.
+  - **Real slices 1 to 10** (34 s in total, 3.4 s per slice, peak memory 2.5 GB; report 14 KB, sheets 0.4 to 0.5 MB each):
+
+    | slice | per mm² | ratio | blurred tiles | folds | cells in folds | flags |
+    |---|---|---|---|---|---|---|
+    | 1 | 1099 | 0.98 | 26% | 1.1% | 6,352 | folds |
+    | 2 | 1140 | 1.04 | 25% | 0.8% | 5,223 | |
+    | 3 | 1098 | 0.97 | 28% | 1.1% | 4,765 | folds |
+    | 4 | 1121 | 1.00 | 28% | 0.9% | 4,792 | |
+    | 5 | 1147 | 1.03 | 37% | 2.0% | 9,905 | folds |
+    | 6 | 1063 | 0.94 | 30% | 0.1% | 201 | |
+    | 7 | 1133 | 1.07 | 33% | 0.2% | 651 | |
+    | 8 | 1046 | 1.00 | 20% | 0.0% | 77 | |
+    | 9 | 1027 | 0.98 | 40% | 0.0% | 179 | |
+    | 10 | 1031 | 0.99 | 23% | 0.1% | 251 | |
+
+    - No density, class or blur flags: class share ratios 0.83 to 1.10.
+  - **Seen in the review sheets:**
+    - The outlines sit on the nuclei.
+    - The blurred crops show real loss of focus.
+    - The fold crops show a dark double-thickness band and a folded flap at the tissue edge.
+    - Inside folds the interim classifier calls many nuclei Neuron (darker staining): input for M7-11.
+    - On slice 9 a second, paler band beside the marked fold stays below the rule.
+    - On slice 5 a vessel with blood content holds many detections, possibly false ones: input for M7-10.
+  - **Tests:** 10 in `tests/unit/test_qc_cells.py` and 1 CLI test; full suite 427 passed; ruff and mypy clean.
+  - **Mutation check:** 17 deliberate faults, all caught. Three were missed at first (crop centre with x and y swapped, outline a quarter pixel off, sparsest blur cluster picked); the tests were tightened, and outlines are now drawn at 1/16 pixel.
 
 ### Component: detect (accuracy and types)
 
