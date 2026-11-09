@@ -25,6 +25,7 @@ from brainrec.store import Manifest, StageExistsError, WorkDir, write_atomic
 from brainrec.store.cells import save_profiles
 from tests.synthetic.nuclei import SectionStack, cut_sections
 from tests.unit.test_cells_align import PARAMS, _cells, _meta, _pair_transform, _profiles_of
+from tests.unit.test_cells_stage import add_canvas, add_masks
 
 NAMES = tuple(t.name for t in DEFAULT_CELL_TYPES)
 
@@ -232,6 +233,8 @@ def make_link_setup(tmp_path):
             chained[k] = chained[k - 1].compose(t)
         chained[k].save(work.chained_transform(k))
     g = zarr.open_group(str(work.volume), mode="w")
+    add_canvas(g, 4, 2300.0)
+    add_masks(work, (1, 2, 3, 4), 1300.0, 0.25)
     g.attrs["ome"] = {"multiscales": [{"datasets": [{"path": "0", "coordinateTransformations": [
         {"type": "scale", "scale": [1.0, 5.0, 0.88, 0.88]}]}]}]}  # fmt: skip
     g.attrs["brainrec"] = {"mode": "registered", "slice_ids": [1, 2, 3, 4],

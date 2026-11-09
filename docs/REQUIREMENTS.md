@@ -430,3 +430,10 @@ Outputs in the work dir `spike/M7-18/` (`group_<g>.jpg`, `overview.jpg`, `groups
 - **`cells/table.csv`:** 4,189,396 rows for slices 1 to 10, 915 MB (218 bytes per cell, so about 13 GB for 140 slices). That is more rows than Excel holds (1,048,576); it is meant for Python, R or QuPath.
 - **QuPath export of slice 9:** 457,765 detections, 504 MB (1,100 bytes per detection), written in 16 s.
 - **Outlines that are not simple:** 2.8% of the outlines of slice 9 fold over or touch themselves. That comes from thinning outlines to 32 vertices in detection (M7-05). QuPath rejects 0.06% of them, and with them the whole import. The export writes such outlines as their convex hull; a fix at the source (thinning without folds) would need detection to run again.
+
+### Density maps of slices 1 to 10 (M7-15, 2026-11-09)
+
+- **`density.zarr`:** 50 µm grid, 635 × 426 squares, 10 sections, 6 classes; 30 MB.
+- **Median total density per section:** 1,019 to 1,133 profiles per mm², consistent with the detection QC.
+- **99th percentiles per class (profiles/mm²):** Neuron 678, Astrocyte-like 1,098, Oligodendrocyte-like 1,138, Microglia-like 317, Vessel-wall 348. Other is empty (the interim classifier never gives it).
+- **What the maps show:** bands of higher density along the cortex and lower density in the white matter. The values stay per mm² of section until the thickness is known; then the Abercrombie correction gives cells per mm³.

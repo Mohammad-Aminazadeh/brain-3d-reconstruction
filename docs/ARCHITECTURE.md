@@ -271,6 +271,11 @@ export_table(placed, out: Path), export_qupath(profiles, slice_id, out: Path)   
     #   confidence, profile count, colours) -> detections; write_qupath(out, features, n) ->
     #   bytes (streamed); check_space(path, bytes): OSError below 1.2 x the estimate
 density_map(placed, spec, cfg) -> Path                   # density.zarr, one channel per type (C18)
+    # implemented (M7-15), cells/density.py: tissue_fraction(mask, mask_um_px, to_volume, shape,
+    #   grid_um) -> share of tissue per square; section_density(xy_um, class_id, n_classes,
+    #   tissue, grid_um) -> profiles/mm² (normalised Gaussian, σ = 1 square); abercrombie(per_mm2,
+    #   T, D) -> cells/mm³; write_density(out, values, DensityMeta) -> bytes; written by run_cells
+    #   with layers and table
 run_cells(catalog, work, cfg, manifest, overwrite=False) -> StageResult
     # C7 shape without slide reads; local alignment and links resume per pair (like register),
     # placement, layers, exports and density are rebuilt per range
@@ -325,7 +330,11 @@ neuroglancer_state(volume_url, ome) -> dict   # RGB layer; OME axis c mapped to 
     # tissue, shader cell_shader(colour): colour picker, opacity, min_confidence slider, checkbox
     # hide_blurred (prop_blurred() is a uint). No size control: Neuroglancer draws ellipsoids at
     # their stored radii. The tissue fades with its own Opacity slider. layout in LAYOUTS (adds
-    # "xy-3d"); ValueError otherwise. density_layers follow with the density maps (M7-15).
+    # "xy-3d"); ValueError otherwise.
+    # implemented (M7-15): optional density_layers: list[DensityLayer(name, url, channel, top,
+    #   unit, grid_um, z_spacing_um)]: one image layer per class after the cell layers, hidden at
+    #   first, shader density_shader(channel, top): jet colour map with a `top` slider (default:
+    #   the class's 99th percentile) and opacity, empty squares transparent; volumeRendering "on"
     # The state sets the global dimensions to the volume's voxel size (one wheel step = one
     # section) and, with position_um (volume µm), the start position. The data server sends
     # Cache-Control: no-cache, so browsers recheck files that a stage rewrote
@@ -347,12 +356,14 @@ brainrec --config C detect --slices A-B [--overwrite] [--no-ask]   # implemented
     # table of nuclei, dropped (radius limits), blurred tiles and seconds per slice
 brainrec --config C cells --slices A-B [--overwrite] [--qupath A-B]   # M7-07, M7-12 to M7-14:
     # pairs, links, layers, cell table; --qupath also exports those slices for QuPath (each run
-    # it is given); prints pairs, cells per class, table and export sizes; later density (M7-15)
+    # it is given); prints pairs, cells per class, table and export sizes; writes density.zarr
+    # with the layers (M7-15)
     # M7-12: first a table per pair (status, share of locked nodes, median shift, recurrence,
     # chance level)
 brainrec --config C serve [--port 8000] [--layout xy] [--gpu-memory-mb 512] [--tissue-opacity F]
     # viewer on port+1; adds every cells/layer_<name> that exists (M7-08) and starts on the
-    # plane of the first slice with cells
+    # plane of the first slice with cells; adds a density layer per non-empty class of
+    # density.zarr (M7-15)
     # --slices: A-B or N. User errors (config, slice range, missing step, other settings without
     # --overwrite, drive not connected) end with one line `error: ...`, exit status 1; a failed pair
     # is not an error: `register` names it in a warning line and exits 0 (M3-13);
@@ -643,6 +654,13 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   - x and y on a grid of `density_grid_um` = 50 µm; z per section;
   - float32 values, Gaussian smoothed over σ = 1 cell in x and y;
   - attribute `unit` = `"profiles/mm2"` while `section_thickness_um` is null, else `"cells/mm3"` (linked cells; Abercrombie correction where profiles are counted).
+- **As implemented (M7-15):**
+  - **Grid:** in the volume frame (origin = canvas origin), one plane per section (the volume's z spacing). Voxel centres are at (i + 0.5) × scale, as in C11.
+  - **What is counted:** every profile at its centre, under its cell's class. Profiles rather than linked cells, since linking is incomplete. Divided by the tissue area of its square: the section's mask moved into the volume frame, sampled 5 × 5 per square. Counts and area are both smoothed (σ = 1 square) before dividing. Squares where less than half the smoothed neighbourhood is tissue stay 0.
+  - **With a thickness T:** N_v = N_a / (T + D) per class, with D = 2 × the mean 3D radius of the class's cells.
+  - **Storage:** chunks (all classes, 1, 128, 128); Neuroglancer reads a channel axis only when it is not split across chunks. One shard per 10 sections.
+  - **Attributes `brainrec`:** unit, class_names, slice_ids, grid_um, section_thickness_um, diameters_um and the 99th percentile per class (`p99`, the viewer's default scale).
+  - **Signature:** the layer signature (stage version 3) also holds the mask hashes, `section_thickness_um` and `density_grid_um`. The thickness was missing in M7-14 although the table's 3D radius depends on it.
 - **Label files** (M7-02, M7-19): `labels/crops.json` (`brainrec.labelcrops/1`), `labels/qupath/<slide>.geojson`, `labels/draft/<slide>.geojson` (drafts, never ground truth), `labels/annotations/<slide>.geojson` (expert exports).
 
 **Extensions of C6 and C9 (fixed with C13 to C18):**
@@ -669,7 +687,7 @@ Every M7 task follows these. Changing one is an interface change (CLAUDE.md). Ev
   | `align_min_peak_ratio` | 2.0 (M7-12) |
   | `link_tolerance_um` | 1.5 |
   | `link_max_sections` | 8 |
-  | `density_grid_um` | 50 |
+  | `density_grid_um` | 50 (implemented M7-15) |
 
   They are added to `ProjectConfig` by the task that first uses them (M7-04 or M7-05).
 

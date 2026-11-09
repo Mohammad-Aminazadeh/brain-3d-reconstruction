@@ -94,6 +94,9 @@ class ProjectConfig(BaseModel):
     link_max_sections: int = Field(default=8, ge=1)  # longer chains are split at the weakest link
     section_thickness_um: float | None = Field(default=None, gt=0.0)  # unknown (Q1): no 3D radius
 
+    # density maps (contract C9, C18; M7-15)
+    density_grid_um: float = Field(default=50.0, gt=0.0)  # x-y grid of density.zarr
+
     # detection QC (M7-16, approved 2026-11-09; Proposed values, calibrated on real slices 1 to
     # 10: densities 1027 to 1147 per mm², class shares within about 15%, 20 to 40% blurred tiles,
     # folds 0.0 to 2.0% of the tissue). Ratios compare a slice with the median of up to two

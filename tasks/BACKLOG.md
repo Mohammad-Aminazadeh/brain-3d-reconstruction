@@ -85,7 +85,7 @@ Conventions that apply to every task (not repeated below):
 | M7-12 | Local alignment at cell scale | cells | High | Done | M7-07, M7-03 |
 | M7-13 | Linking profiles into 3D cells | cells | High | Done | M7-12 |
 | M7-14 | Cell table and QuPath export | cells | Low | Done | M7-13 |
-| M7-15 | Density maps per type | cells | Medium | To do | M7-13, M7-08 |
+| M7-15 | Density maps per type | cells | Medium | Done | M7-13, M7-08 |
 | M7-16 | Detection QC | qc | Medium | Done | M7-06 |
 | M7-17 | Real run, slices 1 to 10, all types, linked | integration | Medium | To do | M7-11, M7-13, M7-14, M7-15, M7-16, M4-05 |
 | M8-xx | Vessels, other structures, landmark-based non-rigid refinement (after the MVP) | several | n/a | To do (planned when reached) | M6-04 |
@@ -1270,7 +1270,7 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
     - The repair has 2 tests; mutation check 3 of 3 caught. Two code paths that turned out to have no effect were removed.
   - **Owner check (2026-11-09):** `cells/qupath/9.geojson` imported on slide 9 in QuPath looks correct (AC14, table and QuPath part passed).
 
-#### M7-15 Density maps per type · Medium · To do
+#### M7-15 Density maps per type · Medium · Done
 - **Objective:** 3D density per type (F21, C18).
 - **Outputs:** `density.zarr` and a viewer layer with a colour map, also rendered in 3D. Units are per mm² of section until the thickness is known, then per mm³ (Abercrombie where profiles are counted).
 - **Depends on:** M7-13, M7-08. **Files:** `src/brainrec/cells/density.py`, `src/brainrec/serve/app.py`.
@@ -1278,6 +1278,23 @@ The owner's labelling (after M7-02) runs in parallel with B and C.
   - synthetic: a known density is recovered within 5%;
   - the correction is applied only when the thickness is set.
 - **Tests:** `tests/unit/test_cells_density.py`.
+- **Result (2026-11-09):**
+  - **Code:** `cells/density.py`, written by `run_cells` with layers and table. `neuroglancer_state(..., density_layers=[DensityLayer(...)])` and `density_shader`; `brainrec serve` adds a hidden density layer per non-empty class. Config `density_grid_um` (50).
+  - **Method:** profiles per mm² of section on a 50 µm grid in the volume frame. Counts and tissue area (masks moved into the volume frame) are smoothed separately, so the tissue edge is not diluted. With a thickness set, Abercrombie N_v = N_a / (T + D).
+  - **Acceptance (synthetic, passed):**
+    - a uniform density recovered within 5% (two classes, 3000 and 800 per mm²), also at the tissue edge;
+    - a linear gradient followed within 8%;
+    - Abercrombie recovers the known number of spheres per mm³ cut into 5 µm sections within 5%;
+    - the stage writes mm³ only with a thickness.
+  - **Real slices 1 to 10** (`brainrec cells --slices 1-10 --overwrite`, 56 s with layers and table):
+    - `density.zarr` 635 × 426 squares × 10 sections × 6 classes, 30 MB in 3 files;
+    - median total density per section 1,019 to 1,133 profiles/mm², consistent with the detection QC (1,027 to 1,147);
+    - 99th percentiles: Neuron 678, Astrocyte-like 1,098, Oligodendrocyte-like 1,138, Microglia-like 317, Vessel-wall 348 per mm²; Other empty.
+  - **Viewer check (headless Chrome):** the density map shows as a colour map over the tissue and renders as a volume in 3D; cortex bands and white matter stand out. Screenshot `spike/M7-15/density_astrocyte_like_2d_3d.png` in the work dir.
+    - The first try showed nothing: chunks held one class each, and Neuroglancer never requested them. Now each chunk holds all classes.
+  - **Owner check (2026-11-09):** the density maps look good in the viewer.
+  - **Tests:** 6 in `tests/unit/test_cells_density.py`; viewer and CLI tests extended; full suite 467 passed; ruff and mypy clean.
+  - **Mutation check:** 13 deliberate faults, all caught. Five were missed at first (half-pixel shifts in the mask warp, colour scale from the maximum, masks without the canvas origin, grid missing from the signature); the tests were tightened.
 
 ### Component: serve
 

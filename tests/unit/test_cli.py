@@ -500,7 +500,7 @@ def test_serve_adds_the_cell_layers_found(tmp_path, monkeypatch, capsys):
     zarr.open_group(str(work.volume), mode="a").attrs["ome"] = {"multiscales": [{"datasets": [
         {"path": "0", "coordinateTransformations": [{"type": "scale",
                                                      "scale": [1.0, 5.0, 0.88, 0.88]}]}]}]}  # fmt: skip
-    zarr.open_group(str(work.volume), mode="a").create_array("0", shape=(3, 2, 100, 200),
+    zarr.open_group(str(work.volume), mode="a").create_array("0", shape=(3, 2, 100, 200), overwrite=True,
                                                              dtype="uint8")  # fmt: skip
     started = {}
     monkeypatch.setattr(cli, "launch_local_viewer", lambda state, port: started.update(s=state))
@@ -508,14 +508,22 @@ def test_serve_adds_the_cell_layers_found(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     _run(cfg, "serve", "--port", "8100", "--layout", "xy-3d", "--tissue-opacity", "0.2")
     layers = started["s"]["layers"]
-    assert [x["name"] for x in layers] == ["brain", "Neuron", "Astrocyte-like",
-                                           "Oligodendrocyte-like", "Microglia-like",
-                                           "Vessel-wall", "Other"]  # fmt: skip
+    names = [x["name"] for x in layers]
+    assert names[:7] == ["brain", "Neuron", "Astrocyte-like", "Oligodendrocyte-like",
+                         "Microglia-like", "Vessel-wall", "Other"]  # fmt: skip
+    density = [x for x in layers if x["name"].startswith("density ")]
+    assert names[7:] == [x["name"] for x in density] and density  # empty classes left out
+    assert "density Other" not in names  # rules-v1 never gives "Other"
+    d = density[0]
+    assert d["visible"] is False and d["volumeRendering"] == "on"
+    assert d["source"]["url"] == "zarr3://http://127.0.0.1:8100/density.zarr"
+    assert d["source"]["transform"]["outputDimensions"]["x"] == [pytest.approx(50e-6), "m"]
     assert layers[1]["source"] == "precomputed://http://127.0.0.1:8100/cells/layer_neuron"
     assert layers[0]["opacity"] == 0.2 and started["s"]["layout"] == "xy-3d"
     assert '#uicontrol vec3 colour color(default="#E69F00")' in layers[1]["shader"]
     out = capsys.readouterr().out
     assert "Cell layers: Neuron, Astrocyte-like" in out
+    assert "Density maps (profiles/mm2, hidden at first; tick a layer to show it): density " in out
     assert "Cells for slices 1-2; the view starts on slice 1. Mouse wheel: one section" in out
     # one wheel step is one section; the view starts in the middle of slice 1's plane
     assert started["s"]["dimensions"]["z"] == [pytest.approx(5e-6), "m"]

@@ -24,3 +24,5 @@ align_min_peak_ratio: 2.0     # a node locks when its peak has 2x the votes of t
 link_tolerance_um: 1.5        # or half the smaller radius if that is larger
 link_max_sections: 8          # longer chains are split at their weakest link
 section_thickness_um: null    # unknown (Q1); once set, a 3D radius is fitted per cell
+# Density maps (C9, C18; M7-15)
+density_grid_um: 50.0         # x-y grid of density.zarr in the volume frame

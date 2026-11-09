@@ -22,11 +22,21 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import cv2
 import numpy as np
 import zarr
 
 from brainrec.catalog import Catalog, ProjectConfig
 from brainrec.cells.align import CHANCE_OFFSET_UM, METHOD, AlignParams, align_pair
+from brainrec.cells.density import (
+    UNIT_AREA,
+    UNIT_VOLUME,
+    DensityMeta,
+    abercrombie,
+    section_density,
+    tissue_fraction,
+    write_density,
+)
 from brainrec.cells.export import TableInput, qupath_features, write_qupath, write_table
 from brainrec.cells.layers import write_layer
 from brainrec.cells.link import (
@@ -46,7 +56,8 @@ from brainrec.store.cells import Profiles, load_cell_pair, load_profiles, save_c
 
 log = logging.getLogger(__name__)
 STAGE = "cells"
-VERSION = 2  # 2: one blob per linked chain (M7-13) instead of one per profile
+# 2: one blob per linked chain (M7-13); 3: density maps with all classes per chunk (M7-15)
+VERSION = 3
 ALIGN_VERSION = 2  # 2: pair files hold the links (M7-13); bump when fields or links change
 
 
@@ -100,6 +111,9 @@ def _check_inputs(catalog: Catalog, work: WorkDir, cfg: ProjectConfig, frame: Vo
     no_cells = [k for k in ids if not work.cell_meta(k).exists()]
     if no_cells:
         raise FileNotFoundError(f"slices {no_cells} have no cell file: run `brainrec detect`")
+    no_mask = [k for k in ids if not (work.mask(k).exists() and work.reg_meta(k).exists())]
+    if no_mask:
+        raise FileNotFoundError(f"slices {no_mask} have no tissue mask: run `brainrec preprocess`")
 
 
 def _signature(catalog: Catalog, work: WorkDir, cfg: ProjectConfig, frame: VolumeFrame) -> dict:
@@ -112,6 +126,9 @@ def _signature(catalog: Catalog, work: WorkDir, cfg: ProjectConfig, frame: Volum
         "cells": {str(k): fingerprint(work.cell_profiles(k)) for k in ids},
         "pairs": {str(k): fingerprint(work.cell_pair(k)) for k in ids[1:]},
         "link_max_sections": cfg.link_max_sections,
+        "section_thickness_um": cfg.section_thickness_um,
+        "density_grid_um": cfg.density_grid_um,
+        "masks": {str(k): hashlib.sha256(work.mask(k).read_bytes()).hexdigest() for k in ids},
         "volume_sha256": hashlib.sha256(volume.encode()).hexdigest(),
         "cell_types": [t.model_dump(mode="json") for t in cfg.cell_types],
     }
@@ -231,6 +248,7 @@ class _Built:
     """3D cells of a range with what the exports need."""
 
     placed: Placed  # one row per cell, in the order of `cells`
+    every: Placed  # every profile placed on its own, slice after slice (density maps)
     cells: Cells
     table: TableInput
     sizes: list[int]
@@ -280,7 +298,8 @@ def _build(ids: list[int], work: WorkDir, cfg: ProjectConfig, frame: VolumeFrame
     label, n_split = build_chains(sizes, _pair_links(work, ids), cfg.link_max_sections)
     cells = build_cells(label, np.concatenate(r_um), np.concatenate(prob), np.concatenate(seen),
                         np.concatenate(section), cfg.section_thickness_um)  # fmt: skip
-    placed = place_cells(Placed.concat(parts), cells, proportions)
+    every = Placed.concat(parts)
+    placed = place_cells(every, cells, proportions)
     rep = cells.rep
     # the 3D radius in volume µm like `radius_um`: x the representative's transform scale
     scale = placed.radius_um / np.concatenate(r_um)[rep]
@@ -290,7 +309,7 @@ def _build(ids: list[int], work: WorkDir, cfg: ProjectConfig, frame: VolumeFrame
     if n_split:
         log.warning("cells: %d chains longer than %d sections were split at their weakest link",
                     n_split, cfg.link_max_sections)  # fmt: skip
-    return _Built(placed, cells, table, sizes, n_split, kept, mpp_of)
+    return _Built(placed, every, cells, table, sizes, n_split, kept, mpp_of)
 
 
 def _write_layers(built: _Built, work: WorkDir, cfg: ProjectConfig) -> dict[str, int]:
@@ -306,6 +325,55 @@ def _write_layers(built: _Built, work: WorkDir, cfg: ProjectConfig) -> dict[str,
         counts[t.name] = int(sel.sum())
         log.info("cells: layer %s, %d cells", t.name, counts[t.name])
     return counts
+
+
+def _canvas(work: WorkDir) -> tuple[float, float]:
+    """Width and height (µm) of the volume's canvas (C11), from its full-resolution level."""
+    root = zarr.open_group(str(work.volume), mode="r")
+    level0 = root["0"]
+    if not isinstance(level0, zarr.Array):
+        raise CellsInputError(f"{work.volume} has no level 0: rebuild the volume")
+    attrs: dict[str, Any] = dict(root.attrs)
+    transforms = attrs["ome"]["multiscales"][0]["datasets"][0]["coordinateTransformations"]
+    scale = next(t["scale"] for t in transforms if t["type"] == "scale")
+    return level0.shape[3] * scale[3], level0.shape[2] * scale[2]
+
+
+def _write_density(built: _Built, ids: list[int], work: WorkDir, cfg: ProjectConfig,
+                   frame: VolumeFrame) -> dict:  # fmt: skip
+    """density.zarr of the range (C18): per section the profiles under their cell's class."""
+    g = cfg.density_grid_um
+    width, height = _canvas(work)
+    shape = (int(np.ceil(height / g)), int(np.ceil(width / g)))
+    n_cls = len(cfg.cell_types)
+    cls = built.placed.class_id[built.cells.profile_cell]  # every profile under its cell's class
+    values = np.zeros((n_cls, len(ids), *shape), np.float32)
+    shift = np.array([[1.0, 0, -frame.origin_um[0]], [0, 1.0, -frame.origin_um[1]], [0, 0, 1]])
+    a = 0
+    for s, k in enumerate(ids):
+        mask = cv2.imread(str(work.mask(k)), cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            raise OSError(f"{work.mask(k)} is not a readable PNG: run preprocess again")
+        mask_ds = float(json.loads(work.reg_meta(k).read_text())["downsample"])
+        to_volume = Transform2D.from_matrix(shift @ frame.transforms[k].matrix3)
+        tissue = tissue_fraction(mask, mask_ds * built.mpp_um[k], to_volume, shape, g)
+        rows = slice(a, a + built.sizes[s])
+        values[:, s] = section_density(built.every.centre[rows, :2], cls[rows], n_cls, tissue, g)
+        a += built.sizes[s]
+    unit, diameters = UNIT_AREA, None
+    if cfg.section_thickness_um is not None:
+        d = []
+        for t in cfg.cell_types:
+            r = built.cells.radius_3d_um[built.placed.class_id == t.id]
+            d.append(float(2 * np.nanmean(r)) if np.isfinite(r).any() else 0.0)
+        values = abercrombie(values, cfg.section_thickness_um, np.array(d))
+        unit, diameters = UNIT_VOLUME, [round(x, 3) for x in d]
+    meta = DensityMeta(unit, [t.name for t in cfg.cell_types], ids, g, frame.z_spacing_um,
+                       cfg.section_thickness_um, diameters)  # fmt: skip
+    size = write_density(work.density, values, meta)
+    log.info("cells: density maps %s, %d x %d squares of %g µm, %.0f MB", unit, shape[1],
+             shape[0], g, size / 1e6)  # fmt: skip
+    return {"unit": unit, "shape": list(values.shape), "bytes": size}
 
 
 def _write_qupath(built: _Built, k: int, ids: list[int], work: WorkDir, cfg: ProjectConfig) -> dict:
@@ -376,6 +444,7 @@ def run_cells(
         table_bytes = write_table(work.cell_table, built.placed, built.cells, built.table,
                                   [t.name for t in cfg.cell_types])  # fmt: skip
         log.info("cells: table of %d cells, %.0f MB", len(built.cells), table_bytes / 1e6)
+        density = _write_density(built, ids, work, cfg, frame)
         lengths = np.bincount(built.cells.n_profiles.astype(int))
         entry = {
             "signature": signature,
@@ -385,6 +454,7 @@ def run_cells(
             "n_split_chains": built.n_split,
             "chain_lengths": {str(n): int(c) for n, c in enumerate(lengths) if c},
             "table_bytes": table_bytes,
+            "density": density,
             "seconds": round(time.monotonic() - t0, 1),
         }
         manifest.set(STAGE, {**(manifest.get(STAGE) or {}), "layers": entry})

@@ -58,6 +58,40 @@ def cell_shader(colour: str) -> str:
     )
 
 
+@dataclass(frozen=True)
+class DensityLayer:
+    """A density map to show (C18): the layer name, the URL of `density.zarr`, the class's
+    channel, the top of the colour scale (density unit) and the unit."""
+
+    name: str
+    url: str
+    channel: int
+    top: float
+    unit: str
+    grid_um: float
+    z_spacing_um: float
+
+
+def density_shader(channel: int, top: float) -> str:
+    """Image shader of a density map (M7-15): the class's channel through the jet colour map,
+    0 at the bottom and `top` (a slider) at the top; empty squares transparent, the rest more
+    opaque the denser, so the map also renders in 3D."""
+    top = max(top, 1e-6)
+    return (
+        f"#uicontrol float top slider(min=0, max={2 * top:.6g}, default={top:.6g})\n"
+        "#uicontrol float opacity slider(min=0, max=1, step=0.05, default=0.7)\n"
+        "void main() {\n"
+        f"  float v = getDataValue({channel});\n"
+        "  float t = clamp(v / max(top, 1e-6), 0.0, 1.0);\n"
+        "  if (v <= 0.0) {\n"
+        "    emitTransparent();\n"
+        "  } else {\n"
+        "    emitRGBA(vec4(colormapJet(t), opacity * (0.25 + 0.75 * t)));\n"
+        "  }\n"
+        "}\n"
+    )
+
+
 def create_app(root: Path) -> FastAPI:
     app = FastAPI(title="brainrec")
     app.add_middleware(
@@ -90,12 +124,14 @@ def neuroglancer_state(
     cell_layers: list[CellLayer] | None = None,
     tissue_opacity: float | None = None,
     position_um: tuple[float, float, float] | None = None,
+    density_layers: list[DensityLayer] | None = None,
 ) -> dict[str, Any]:
     """Viewer state showing `volume_url` (OME-Zarr 0.5, axes c, z, y, x in um) as RGB, with
     pure-white background transparent over dark panels (C11, M3-12).
 
     `cell_layers` adds one annotation layer per class after the tissue layer (M7-08), each with
-    `cell_shader` controls. The tissue layer ("brain") fades with its own Opacity slider in the
+    `cell_shader` controls. `density_layers` adds one density map per class after them (M7-15),
+    hidden at first, with `density_shader` controls and volume rendering in the 3D panel. The tissue layer ("brain") fades with its own Opacity slider in the
     layer panel, down to fully transparent; `tissue_opacity` (0 to 1) sets its start value.
 
     The viewer works in the volume's voxel units (x, y: pixel size; z: section spacing), so one
@@ -153,6 +189,20 @@ def neuroglancer_state(
             "name": layer.name,
             "source": f"precomputed://{layer.url}",
             "shader": cell_shader(layer.colour),
+        })  # fmt: skip
+    for d in density_layers or []:
+        state["layers"].append({
+            "type": "image",
+            "name": d.name,
+            "source": {
+                "url": f"zarr3://{d.url}",
+                "transform": {"outputDimensions": {
+                    "c^": [1, ""], "z": [d.z_spacing_um * 1e-6, "m"],
+                    "y": [d.grid_um * 1e-6, "m"], "x": [d.grid_um * 1e-6, "m"]}},
+            },
+            "shader": density_shader(d.channel, d.top),
+            "visible": False,
+            "volumeRendering": "on",
         })  # fmt: skip
     return state
 

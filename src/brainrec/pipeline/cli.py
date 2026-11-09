@@ -29,6 +29,7 @@ from brainrec.registration.chain import load_chained, run_register
 from brainrec.serve import (
     LAYOUTS,
     CellLayer,
+    DensityLayer,
     create_app,
     hosted_url,
     launch_local_viewer,
@@ -333,6 +334,22 @@ def _start(root: zarr.Group, manifest: Manifest) -> tuple[float, float, float] |
     return (w * sx / 2, h * sy / 2, (slice_ids.index(ids[0]) + 0.5) * sz)
 
 
+def _density_layers(work: WorkDir, base: str) -> list[DensityLayer]:
+    """One layer per class of `density.zarr` (C18), if it exists; empty classes are left out."""
+    if not (work.density / "zarr.json").exists():
+        return []
+    attrs: dict[str, Any] = dict(zarr.open_group(str(work.density), mode="r").attrs)
+    meta: dict[str, Any] = dict(attrs["brainrec"])
+    scale = attrs["ome"]["multiscales"][0]["datasets"][0]["coordinateTransformations"][0]["scale"]
+    z = float(scale[1])  # axes c, z, y, x
+    return [
+        DensityLayer(f"density {name}", f"{base}/{work.density.name}", c, float(top),
+                     meta["unit"], float(meta["grid_um"]), z)
+        for c, (name, top) in enumerate(zip(meta["class_names"], meta["p99"], strict=True))
+        if top > 0
+    ]  # fmt: skip
+
+
 def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
     if not work.volume.exists():
         raise CliError(f"no volume at {work.volume}: run `brainrec volume` first")
@@ -349,6 +366,7 @@ def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
         for t in cfg.cell_types
         if (work.cell_layer(t.name) / "info").exists()
     ]  # fmt: skip
+    density = _density_layers(work, base)
     state = neuroglancer_state(
         f"{base}/{work.volume.name}",
         ome,
@@ -357,6 +375,7 @@ def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
         cell_layers=cells,
         tissue_opacity=args.tissue_opacity,
         position_um=_start(root, Manifest(work.manifest)) if cells else None,
+        density_layers=density,
     )
     if cells:
         print(f"Cell layers: {', '.join(c.name for c in cells)} (controls in each layer's panel)")
@@ -365,6 +384,9 @@ def _serve(args: argparse.Namespace, cfg: ProjectConfig, work: WorkDir) -> None:
         if ids:
             print(f"Cells for slices {ids[0]}-{ids[-1]}; the view starts on slice {ids[0]}. "
                   "Mouse wheel: one section per step.")  # fmt: skip
+    if density:
+        print(f"Density maps ({density[0].unit}, hidden at first; tick a layer to show it): "
+              f"{', '.join(d.name for d in density)}")  # fmt: skip
     viewer = launch_local_viewer(state, args.port + 1)  # keep referenced while serving
     print("Viewer (open in Chrome):", viewer, flush=True)
     print("Fallback, public Neuroglancer build:", hosted_url(state), flush=True)

@@ -36,9 +36,28 @@ def _meta(k: int, names=NAMES) -> dict:
             "class_names": names, "n_blurred_tiles": 0, "tile_sharpness": []}  # fmt: skip
 
 
+def add_masks(work: WorkDir, ids, size_um: float, mpp: float) -> None:
+    """Tissue masks (C4, 32x) covering `size_um` of each slice completely."""
+    import cv2
+
+    n = int(np.ceil(size_um / (32 * mpp)))
+    for k in ids:
+        write_atomic(
+            work.mask(k), cv2.imencode(".png", np.full((n, n), 255, np.uint8))[1].tobytes()
+        )
+        write_atomic(work.reg_meta(k), json.dumps({"downsample": 32.0}).encode())
+
+
+def add_canvas(g, n_slices: int, size_um: float, voxel_um: float = 0.88) -> None:
+    """The volume's level 0 (metadata only, no voxels written) for the canvas size."""
+    n = int(size_um / voxel_um)
+    g.create_array("0", shape=(3, n_slices, n, n), chunks=(3, 1, 512, 512), dtype="uint8")
+
+
 def _volume(work: WorkDir, ids, z=5.0, mode="registered", transforms=None):
     transforms = transforms or {1: Transform2D.identity(), 2: PAIR}
     g = zarr.open_group(str(work.volume), mode="w")
+    add_canvas(g, len(ids), 1500.0)
     g.attrs["ome"] = {"multiscales": [{"datasets": [{"path": "0", "coordinateTransformations": [
         {"type": "scale", "scale": [1.0, z, 0.88, 0.88]}]}]}]}  # fmt: skip
     g.attrs["brainrec"] = {
@@ -64,6 +83,7 @@ def make_setup(tmp_path):
     for k, p in profiles.items():
         save_profiles(work, k, p, _meta(k))
     _volume(work, [1, 2])
+    add_masks(work, (1, 2), 1200.0, 0.2205)
     return cfg, work, Catalog.scan(data), Manifest(work.manifest), profiles
 
 
